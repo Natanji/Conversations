@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.TimeZone;
 
+import eu.siacs.conversations.crypto.axolotl.AxolotlService;
 import eu.siacs.conversations.services.XmppConnectionService;
 import eu.siacs.conversations.utils.PhoneHelper;
 
@@ -26,16 +27,18 @@ public abstract class AbstractGenerator {
 			"http://jabber.org/protocol/caps",
 			"http://jabber.org/protocol/disco#info",
 			"urn:xmpp:avatar:metadata+notify",
+			"http://jabber.org/protocol/nick+notify",
 			"urn:xmpp:ping",
 			"jabber:iq:version",
-			"http://jabber.org/protocol/chatstates"};
+			"http://jabber.org/protocol/chatstates",
+			AxolotlService.PEP_DEVICE_LIST+"+notify"};
 	private final String[] MESSAGE_CONFIRMATION_FEATURES = {
 			"urn:xmpp:chat-markers:0",
 			"urn:xmpp:receipts"
 	};
 	private String mVersion = null;
-	public final String IDENTITY_NAME = "Conversations";
-	public final String IDENTITY_TYPE = "phone";
+	protected final String IDENTITY_NAME = "Conversations";
+	protected final String IDENTITY_TYPE = "phone";
 
 	private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
 
@@ -52,7 +55,7 @@ public abstract class AbstractGenerator {
 		return this.mVersion;
 	}
 
-	protected String getIdentityName() {
+	public String getIdentityName() {
 		return IDENTITY_NAME + " " + getIdentityVersion();
 	}
 

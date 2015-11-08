@@ -4,6 +4,7 @@ import android.content.ContentValues;
 import android.database.Cursor;
 import android.os.SystemClock;
 
+import eu.siacs.conversations.crypto.PgpDecryptionService;
 import net.java.otr4j.crypto.OtrCryptoEngineImpl;
 import net.java.otr4j.crypto.OtrCryptoException;
 
@@ -20,6 +21,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import eu.siacs.conversations.Config;
 import eu.siacs.conversations.R;
 import eu.siacs.conversations.crypto.OtrService;
+import eu.siacs.conversations.crypto.axolotl.AxolotlService;
 import eu.siacs.conversations.services.XmppConnectionService;
 import eu.siacs.conversations.xmpp.XmppConnection;
 import eu.siacs.conversations.xmpp.jid.InvalidJidException;
@@ -36,6 +38,7 @@ public class Account extends AbstractEntity {
 	public static final String ROSTERVERSION = "rosterversion";
 	public static final String KEYS = "keys";
 	public static final String AVATAR = "avatar";
+	public static final String DISPLAY_NAME = "display_name";
 
 	public static final String PINNED_MECHANISM_KEY = "pinned_mechanism";
 
@@ -43,6 +46,18 @@ public class Account extends AbstractEntity {
 	public static final int OPTION_DISABLED = 1;
 	public static final int OPTION_REGISTER = 2;
 	public static final int OPTION_USECOMPRESSION = 3;
+
+	public boolean httpUploadAvailable() {
+		return xmppConnection != null && xmppConnection.getFeatures().httpUpload();
+	}
+
+	public void setDisplayName(String displayName) {
+		this.displayName = displayName;
+	}
+
+	public String getDisplayName() {
+		return displayName;
+	}
 
 	public static enum State {
 		DISABLED,
@@ -57,7 +72,8 @@ public class Account extends AbstractEntity {
 		REGISTRATION_SUCCESSFUL,
 		REGISTRATION_NOT_SUPPORTED(true),
 		SECURITY_ERROR(true),
-		INCOMPATIBLE_SERVER(true);
+		INCOMPATIBLE_SERVER(true),
+		DNS_TIMEOUT(true);
 
 		private final boolean isError;
 
@@ -101,6 +117,8 @@ public class Account extends AbstractEntity {
 					return R.string.account_status_security_error;
 				case INCOMPATIBLE_SERVER:
 					return R.string.account_status_incompatible_server;
+				case DNS_TIMEOUT:
+					return R.string.account_status_dns_timeout;
 				default:
 					return R.string.account_status_unknown;
 			}
@@ -116,8 +134,11 @@ public class Account extends AbstractEntity {
 	protected State status = State.OFFLINE;
 	protected JSONObject keys = new JSONObject();
 	protected String avatar;
+	protected String displayName = null;
 	protected boolean online = false;
 	private OtrService mOtrService = null;
+	private AxolotlService axolotlService = null;
+	private PgpDecryptionService pgpDecryptionService = null;
 	private XmppConnection xmppConnection = null;
 	private long mEndGracePeriod = 0L;
 	private String otrFingerprint;
@@ -131,12 +152,12 @@ public class Account extends AbstractEntity {
 
 	public Account(final Jid jid, final String password) {
 		this(java.util.UUID.randomUUID().toString(), jid,
-				password, 0, null, "", null);
+				password, 0, null, "", null, null);
 	}
 
 	public Account(final String uuid, final Jid jid,
 			final String password, final int options, final String rosterVersion, final String keys,
-			final String avatar) {
+			final String avatar, String displayName) {
 		this.uuid = uuid;
 		this.jid = jid;
 		if (jid.isBareJid()) {
@@ -151,6 +172,7 @@ public class Account extends AbstractEntity {
 			this.keys = new JSONObject();
 		}
 		this.avatar = avatar;
+		this.displayName = displayName;
 	}
 
 	public static Account fromCursor(final Cursor cursor) {
@@ -166,7 +188,8 @@ public class Account extends AbstractEntity {
 				cursor.getInt(cursor.getColumnIndex(OPTIONS)),
 				cursor.getString(cursor.getColumnIndex(ROSTERVERSION)),
 				cursor.getString(cursor.getColumnIndex(KEYS)),
-				cursor.getString(cursor.getColumnIndex(AVATAR)));
+				cursor.getString(cursor.getColumnIndex(AVATAR)),
+				cursor.getString(cursor.getColumnIndex(DISPLAY_NAME)));
 	}
 
 	public boolean isOptionSet(final int option) {
@@ -185,16 +208,12 @@ public class Account extends AbstractEntity {
 		return jid.getLocalpart();
 	}
 
-	public void setUsername(final String username) throws InvalidJidException {
-		jid = Jid.fromParts(username, jid.getDomainpart(), jid.getResourcepart());
+	public void setJid(final Jid jid) {
+		this.jid = jid;
 	}
 
 	public Jid getServer() {
 		return jid.toDomainJid();
-	}
-
-	public void setServer(final String server) throws InvalidJidException {
-		jid = Jid.fromParts(jid.getLocalpart(), server, jid.getResourcepart());
 	}
 
 	public String getPassword() {
@@ -250,6 +269,10 @@ public class Account extends AbstractEntity {
 		return keys;
 	}
 
+	public String getKey(final String name) {
+		return this.keys.optString(name, null);
+	}
+
 	public boolean setKey(final String keyName, final String keyValue) {
 		try {
 			this.keys.put(keyName, keyValue);
@@ -257,6 +280,14 @@ public class Account extends AbstractEntity {
 		} catch (final JSONException e) {
 			return false;
 		}
+	}
+
+	public boolean setPrivateKeyAlias(String alias) {
+		return setKey("private_key_alias", alias);
+	}
+
+	public String getPrivateKeyAlias() {
+		return getKey("private_key_alias");
 	}
 
 	@Override
@@ -270,15 +301,29 @@ public class Account extends AbstractEntity {
 		values.put(KEYS, this.keys.toString());
 		values.put(ROSTERVERSION, rosterVersion);
 		values.put(AVATAR, avatar);
+		values.put(DISPLAY_NAME, displayName);
 		return values;
+	}
+
+	public AxolotlService getAxolotlService() {
+		return axolotlService;
 	}
 
 	public void initAccountServices(final XmppConnectionService context) {
 		this.mOtrService = new OtrService(context, this);
+		this.axolotlService = new AxolotlService(this, context);
+		if (xmppConnection != null) {
+			xmppConnection.addOnAdvancedStreamFeaturesAvailableListener(axolotlService);
+		}
+		this.pgpDecryptionService = new PgpDecryptionService(context);
 	}
 
 	public OtrService getOtrService() {
 		return this.mOtrService;
+	}
+
+	public PgpDecryptionService getPgpDecryptionService() {
+		return pgpDecryptionService;
 	}
 
 	public XmppConnection getXmppConnection() {

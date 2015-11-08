@@ -1,9 +1,5 @@
 package eu.siacs.conversations.utils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.RejectedExecutionException;
-
 import android.content.Context;
 import android.content.CursorLoader;
 import android.content.Loader;
@@ -14,6 +10,9 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.provider.ContactsContract;
 import android.provider.ContactsContract.Profile;
+
+import java.util.List;
+import java.util.concurrent.RejectedExecutionException;
 
 public class PhoneHelper {
 
@@ -98,7 +97,7 @@ public class PhoneHelper {
 		if (packageName != null) {
 			try {
 				return context.getPackageManager().getPackageInfo(packageName, 0).versionName;
-			} catch (final PackageManager.NameNotFoundException e) {
+			} catch (final PackageManager.NameNotFoundException | RuntimeException e) {
 				return "unknown";
 			}
 		} else {

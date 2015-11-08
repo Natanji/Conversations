@@ -60,7 +60,7 @@
   <string name="crash_report_title">Errore di Conversations</string>
   <string name="crash_report_message">Se scegli di inviare una segnalazione dell’errore aiuterai lo sviluppo di Conversations\n<b>Attenzione:</b> Questo utilizzerà il tuo account XMPP per inviare la segnalazione agli sviluppatori.</string>
   <string name="send_now">Invia adesso</string>
-  <string name="send_never">Non chiedere mai più</string>
+  <string name="send_never">Non chiedere più</string>
   <string name="problem_connecting_to_account">Impossibile collegarsi tramite questo utente</string>
   <string name="problem_connecting_to_accounts">Impossibile collegarsi tramite più utenti</string>
   <string name="touch_to_fix">Tocca qui per gestire i tuoi utenti</string>
@@ -74,13 +74,10 @@
   <string name="clear_conversation_history">Pulisci la cronologia della Conversazione</string>
   <string name="clear_histor_msg">Vuoi cancellare tutti i messaggi di questa Conversazione?\n\n<b>Attenzione:</b> Questo non influenzerà i messaggi presenti su altri dispositivi o server.</string>
   <string name="delete_messages">Elimina messaggi</string>
-  <string name="also_end_conversation">Termina questa conversazione in seguito</string>
   <string name="choose_presence">Choose presence to contact</string>
-  <string name="send_plain_text_message">Messaggio non cifrato</string>
   <string name="send_otr_message">Messaggio OTR</string>
   <string name="send_pgp_message">Messaggio OpenPGP</string>
   <string name="your_nick_has_been_changed">Il tuo nome utente è stato cambiato</string>
-  <string name="download_image">Scarica Immagine</string>
   <string name="send_unencrypted">Invia non cifrato</string>
   <string name="decryption_failed">Decifrazione fallita. Forse non disponi della chiave privata corretta.</string>
   <string name="openkeychain_required">OpenKeychain</string>
@@ -106,8 +103,6 @@
   <string name="pref_vibrate_summary">Vibra anche quando arriva un nuovo messaggio</string>
   <string name="pref_sound">Suono</string>
   <string name="pref_sound_summary">Riproduci una suoneria con la notifica</string>
-  <string name="pref_conference_notifications">Notifiche Conferenze</string>
-  <string name="pref_conference_notifications_summary">Notifica sempre quando arriva un nuovo messaggio da una conferenza, invece che solo quando in primo piano</string>
   <string name="pref_notification_grace_period">Periodo tra notifiche</string>
   <string name="pref_notification_grace_period_summary">Disabilita le notifiche per un breve lasso di tempo dopo che un messaggio è stato ricevuto</string>
   <string name="pref_advanced_options">Opzioni Avanzate</string>
@@ -150,7 +145,6 @@
   <string name="account_status_regis_not_sup">Il Server non supporta la registrazione</string>
   <string name="account_status_security_error">Errore di sicurezza</string>
   <string name="account_status_incompatible_server">Server non compatibile</string>
-  <string name="encryption_choice_none">Testo semplice</string>
   <string name="encryption_choice_otr">OTR</string>
   <string name="encryption_choice_pgp">OpenPGP</string>
   <string name="mgmt_account_edit">Modifica utente</string>
@@ -187,7 +181,6 @@
   <string name="server_info_blocking">XEP-0191: Blocking Command</string>
   <string name="server_info_roster_version">XEP-0237: Roster Versioning</string>
   <string name="server_info_stream_management">XEP-0198: Stream Management</string>
-  <string name="server_info_pep">XEP-0163: PEP (Avatars)</string>
   <string name="server_info_available">disponibile</string>
   <string name="server_info_unavailable">non disponibile</string>
   <string name="missing_public_keys">Annuncio chiave pubblica non effettuato</string>
@@ -289,15 +282,12 @@
   <string name="conference_members_only">Questa conferenza è solo per membri</string>
   <string name="conference_kicked">Sei stato buttato fuori dalla conferenza</string>
   <string name="using_account">usando l’utente %s</string>
-  <string name="checking_image">Controlla immagine su HTTP</string>
-  <string name="image_file_deleted">Il file dell’immagine è stato cancellato</string>
   <string name="not_connected_try_again">Non sei connesso. Riprova più tardi</string>
-  <string name="check_image_filesize">Controlla le dimensioni dell’immagine</string>
   <string name="message_options">Opzioni del messaggio</string>
   <string name="copy_text">Copia testo</string>
   <string name="copy_original_url">Copia URL originale</string>
   <string name="send_again">Invia di nuovo</string>
-  <string name="image_url">URL immagine</string>
+  <string name="file_url">URL del file</string>
   <string name="message_text">Messaggio di testo</string>
   <string name="url_copied_to_clipboard">URL copiato</string>
   <string name="message_copied_to_clipboard">Messaggio copiato</string>
@@ -389,7 +379,6 @@
   <string name="public_conference">Conferenza pubblicamente accessibile</string>
   <string name="private_conference">Conferenza privata</string>
   <string name="conference_options">Opzioni conferenza</string>
-  <string name="members_only">Privata (solo membri)</string>
   <string name="non_anonymous">Non anonimo</string>
   <string name="modified_conference_options">Modificate le opzioni della conferenza!</string>
   <string name="could_not_modify_conference_options">Impossibile modificare opzioni conferenza</string>
@@ -411,6 +400,7 @@
   <string name="apk">Applicazione Android</string>
   <string name="vcard">Contatto</string>
   <string name="received_x_file">Ricevuto %s</string>
+  <string name="disable_foreground_service">Disabilita i servizi in background</string>
   <string name="touch_to_open_conversations">Tocca per avviare Conversations</string>
   <string name="avatar_has_been_published">Il tuo avatar è stato pubblicato!</string>
   <string name="sending_x_file">Invio %s</string>
@@ -427,7 +417,6 @@
   <string name="received_location">Posizione ricevuta</string>
   <string name="title_undo_swipe_out_conversation">Conversazione interrotta</string>
   <string name="title_undo_swipe_out_muc">Conferenza terminata</string>
-  <string name="pref_certificate_options">Opzioni per i certificati</string>
   <string name="pref_dont_trust_system_cas_title">Non ti fidare delle CA di sistema</string>
   <string name="pref_dont_trust_system_cas_summary">Tutti i certificati devono essere accettati manualmente</string>
   <string name="pref_remove_trusted_certificates_title">Elimina i certificati</string>
@@ -444,4 +433,7 @@
     <item quantity="one">Seleziona il %d contatto</item>
     <item quantity="other">Selezionati %d contatti</item>
   </plurals>
+  <string name="none">Nessuno</string>
+  <string name="recently_used">Usati recentemente</string>
+  <string name="search_for_contacts_or_groups">Cerca contatti o gruppi</string>
 </resources>

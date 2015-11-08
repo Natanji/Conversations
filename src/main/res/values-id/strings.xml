@@ -74,13 +74,10 @@
   <string name="clear_conversation_history">Hapus Riwayat Percakapan</string>
   <string name="clear_histor_msg">Apakah Anda ingin menghapus semua pesan dalam Percakapan ini\n\n<b>Peringatan:</b>ini tidak akan mempengaruhi pesan yang disimpan pada perangkat atau server lain.</string>
   <string name="delete_messages">Hapus pesan</string>
-  <string name="also_end_conversation">Akhiri percakapan setelahnya</string>
   <string name="choose_presence">Pilih kehadiran untuk kontak</string>
-  <string name="send_plain_text_message">Kirim pesan teks biasa</string>
   <string name="send_otr_message">Kirim pesan terenskripsi OTR</string>
   <string name="send_pgp_message">Kirim pesan terenskripsi OpenPGP</string>
   <string name="your_nick_has_been_changed">Nick kamu telah dirubah</string>
-  <string name="download_image">Unduh Gambar</string>
   <string name="send_unencrypted">Kirim tidak terenkripsi</string>
   <string name="decryption_failed">Dekripsi gagal. Mungkin Anda tidak memiliki kunci pribadi yang tepat.</string>
   <string name="openkeychain_required">OpenKeychain</string>
@@ -106,8 +103,6 @@
   <string name="pref_vibrate_summary">Juga aktifkan getaran bila pesan baru tiba</string>
   <string name="pref_sound">Suara</string>
   <string name="pref_sound_summary">mainkan suara saat menerima notifikasi</string>
-  <string name="pref_conference_notifications">Notifikasi Conference</string>
-  <string name="pref_conference_notifications_summary">Selalu memberitahukan bila pesan conference baru diterima daripada hanya dicetak tebal</string>
   <string name="pref_notification_grace_period">Tenggang waktu pemberitahuan</string>
   <string name="pref_notification_grace_period_summary">Nonaktifkan pemberitahuan untuk waktu yang singkat setelah salinan diterima</string>
   <string name="pref_advanced_options">Opsi Lanjutan</string>
@@ -150,7 +145,6 @@
   <string name="account_status_regis_not_sup">Server tidak mendukung pendaftaran akun.</string>
   <string name="account_status_security_error">Kesalahan keamanan</string>
   <string name="account_status_incompatible_server">Server tidak cocok</string>
-  <string name="encryption_choice_none">Teks biasa</string>
   <string name="encryption_choice_otr">OTR</string>
   <string name="encryption_choice_pgp">OpenPGP</string>
   <string name="mgmt_account_edit">Ubah akun</string>
@@ -187,7 +181,6 @@
   <string name="server_info_blocking">XEP-0191: Blocking Command</string>
   <string name="server_info_roster_version">XEP-0237: Roster Versioning</string>
   <string name="server_info_stream_management">XEP-0198: Stream Management</string>
-  <string name="server_info_pep">XEP-0163: PEP (Avatars)</string>
   <string name="server_info_available">tersedia</string>
   <string name="server_info_unavailable">tidak tersedia</string>
   <string name="missing_public_keys">Pemberitahuan kunci publik tidak ditemukan</string>
@@ -205,6 +198,8 @@
   <string name="reception_failed">Penerimaan gagal</string>
   <string name="your_fingerprint">Fingerprint Anda</string>
   <string name="otr_fingerprint">OTR fingerprint</string>
+  <string name="other_devices">Perangkat lainnya</string>
+  <string name="done">Selesai</string>
   <string name="verify">Verifikasi</string>
   <string name="decrypt">Deskripsi</string>
   <string name="conferences">Conferences</string>
@@ -289,15 +284,13 @@
   <string name="conference_members_only">Conference ini hanya untuk member terdaftar</string>
   <string name="conference_kicked">Anda telah ditendang dari conference ini</string>
   <string name="using_account">menggunakan akun %s</string>
-  <string name="checking_image">Mengecek gambar di host HTTP</string>
-  <string name="image_file_deleted">Berkas gambar telah dihapus</string>
   <string name="not_connected_try_again">Anda tidak terhubung. Coba lagi nanti</string>
-  <string name="check_image_filesize">Cek ukuran berkas gambar</string>
+  <string name="check_x_filesize">Cek %s ukuran</string>
   <string name="message_options">Opsi pesan</string>
   <string name="copy_text">Salin teks</string>
   <string name="copy_original_url">Salin URL asli</string>
   <string name="send_again">Kirim lagi</string>
-  <string name="image_url">URL gambar</string>
+  <string name="file_url">URL Berkas</string>
   <string name="message_text">Pesan teks</string>
   <string name="url_copied_to_clipboard">URL disalin ke clipboard</string>
   <string name="message_copied_to_clipboard">Pesan disalin ke clipboard</string>
@@ -352,6 +345,7 @@
   <string name="reset">Ulang</string>
   <string name="account_image_description">Avatar akun</string>
   <string name="copy_otr_clipboard_description">Salin OTR fingerprint ke clipboard</string>
+  <string name="clear_other_devices">Bersihkan perangkat</string>
   <string name="fetching_history_from_server">Mengambil data dari server</string>
   <string name="no_more_history_on_server">Tidak ada data lagi di server</string>
   <string name="updating">Merubah...</string>
@@ -389,7 +383,6 @@
   <string name="public_conference">Conference umum</string>
   <string name="private_conference">Rahasia, hanya member conference</string>
   <string name="conference_options">Opsi conference</string>
-  <string name="members_only">Rahasia (Hanya member)</string>
   <string name="non_anonymous">Non Anonymous</string>
   <string name="modified_conference_options">Opsi conference dimodifikasi!</string>
   <string name="could_not_modify_conference_options">Tidak dapat merubah pengaturan conference</string>
@@ -429,7 +422,6 @@
   <string name="received_location">Lokasi yang diterima</string>
   <string name="title_undo_swipe_out_conversation">Percakapan tertutup</string>
   <string name="title_undo_swipe_out_muc">Tinggalkan conference</string>
-  <string name="pref_certificate_options">Opsi Sertifikat</string>
   <string name="pref_dont_trust_system_cas_title">Jangan percaya sistem CA</string>
   <string name="pref_dont_trust_system_cas_summary">Semua sertifikat harus disetujui secara manual</string>
   <string name="pref_remove_trusted_certificates_title">Hapus sertifikat</string>
@@ -449,4 +441,13 @@
   <string name="none">Tak satupun</string>
   <string name="recently_used">Maling sering digunakan</string>
   <string name="choose_quick_action">Pilih aksi cepat</string>
+  <string name="search_for_contacts_or_groups">Cari grup atau daftar kontak</string>
+  <string name="send_private_message">Kirim pesan pribadi</string>
+  <string name="user_has_left_conference">%s meninggalkan conference!</string>
+  <string name="username">Username</string>
+  <string name="username_hint">Username</string>
+  <string name="invalid_username">Username ini tidak valid</string>
+  <string name="download_failed_server_not_found">Unduhan gagal: Server tidak ditemukan</string>
+  <string name="download_failed_file_not_found">Unduh gagal: Berkas tidak ditemukan</string>
+  <string name="download_failed_could_not_connect">Unduhan gagal: Tidak dapat terhubung ke host</string>
 </resources>

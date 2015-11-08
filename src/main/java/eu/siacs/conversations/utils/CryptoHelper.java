@@ -1,7 +1,21 @@
 package eu.siacs.conversations.utils;
 
+import android.util.Log;
+import android.util.Pair;
+
+import org.bouncycastle.asn1.x500.X500Name;
+import org.bouncycastle.asn1.x500.style.BCStyle;
+import org.bouncycastle.asn1.x500.style.IETFUtils;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
+import org.bouncycastle.jce.PrincipalUtil;
+
 import java.security.SecureRandom;
+import java.security.cert.CertificateEncodingException;
+import java.security.cert.CertificateParsingException;
+import java.security.cert.X509Certificate;
+import java.security.cert.X509Extension;
 import java.text.Normalizer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
@@ -9,6 +23,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 import eu.siacs.conversations.Config;
+import eu.siacs.conversations.R;
+import eu.siacs.conversations.entities.Message;
+import eu.siacs.conversations.xmpp.jid.InvalidJidException;
+import eu.siacs.conversations.xmpp.jid.Jid;
 
 public final class CryptoHelper {
 	public static final String FILETRANSFER = "?FILETRANSFERv1:";
@@ -91,14 +109,15 @@ public final class CryptoHelper {
 	}
 
 	public static String prettifyFingerprint(String fingerprint) {
-		if (fingerprint.length() < 40) {
+		if (fingerprint==null) {
+			return "";
+		} else if (fingerprint.length() < 40) {
 			return fingerprint;
 		}
-		StringBuilder builder = new StringBuilder(fingerprint);
-		builder.insert(8, " ");
-		builder.insert(17, " ");
-		builder.insert(26, " ");
-		builder.insert(35, " ");
+		StringBuilder builder = new StringBuilder(fingerprint.replaceAll("\\s",""));
+		for(int i=8;i<builder.length();i+=9) {
+			builder.insert(i, ' ');
+		}
 		return builder.toString();
 	}
 
@@ -122,6 +141,42 @@ public final class CryptoHelper {
 					break;
 				}
 			}
+		}
+	}
+
+	public static Pair<Jid,String> extractJidAndName(X509Certificate certificate) throws CertificateEncodingException, InvalidJidException, CertificateParsingException {
+		Collection<List<?>> alternativeNames = certificate.getSubjectAlternativeNames();
+		List<String> emails = new ArrayList<>();
+		if (alternativeNames != null) {
+			for(List<?> san : alternativeNames) {
+				Integer type = (Integer) san.get(0);
+				if (type == 1) {
+					emails.add((String) san.get(1));
+				}
+			}
+		}
+		X500Name x500name = new JcaX509CertificateHolder(certificate).getSubject();
+		if (emails.size() == 0) {
+			emails.add(IETFUtils.valueToString(x500name.getRDNs(BCStyle.EmailAddress)[0].getFirst().getValue()));
+		}
+		String name = IETFUtils.valueToString(x500name.getRDNs(BCStyle.CN)[0].getFirst().getValue());
+		if (emails.size() >= 1) {
+			return new Pair<>(Jid.fromString(emails.get(0)), name);
+		} else {
+			return null;
+		}
+	}
+
+	public static int encryptionTypeToText(int encryption) {
+		switch (encryption) {
+			case Message.ENCRYPTION_OTR:
+				return R.string.encryption_choice_otr;
+			case Message.ENCRYPTION_AXOLOTL:
+				return R.string.encryption_choice_omemo;
+			case Message.ENCRYPTION_NONE:
+				return R.string.encryption_choice_unencrypted;
+			default:
+				return R.string.encryption_choice_pgp;
 		}
 	}
 }

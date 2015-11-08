@@ -1,5 +1,77 @@
 ###Changelog
 
+####Versrion 1.7.1
+* performance improvements when opening a conversation
+
+####Version 1.7.0
+* CAPTCHA support
+* SASL EXTERNAL (client certifiates)
+* fetching MUC history via MAM
+* redownload deleted files from HTTP hosts
+* Expert setting to automatically set presence
+* bug fixes
+
+####Version 1.6.11
+* tab completion for MUC nicks
+* history export
+* bug fixes
+
+####Version 1.6.10
+* fixed facebook login
+* fixed bug with ejabberd mam
+* use official HTTP File Upload namespace
+
+####Version 1.6.9
+* basic keyboard support
+
+####Version 1.6.8
+* reworked 'enter is send' setting
+* reworked DNS server discovery on lolipop devices
+* various bug fixes
+
+####Version 1.6.7
+* bug fixes
+
+####Version 1.6.6
+* best 1.6 release yet
+
+####Version 1.6.5
+* more OMEMO fixes
+
+####Version 1.6.4
+* setting to enable white chat bubbles
+* limit OMEMO key publish attempts to work around broken PEP
+* various bug fixes
+
+####Version 1.6.3
+* bug fixes
+
+####Version 1.6.2
+* fixed issues with connection time out when server does not support ping
+
+####Version 1.6.1
+* fixed crashes
+
+####Version 1.6.0
+* new multi-end-to-multi-end encryption method
+* redesigned chat bubbles
+* show unexpected encryption changes as red chat bubbles
+* always notify in private/non-anonymous conferences
+
+####Version 1.5.1
+* fixed rare crashes
+* improved otr support
+
+####Version 1.5.0
+* upload files to HTTP host and share them in MUCs. requires new [HttpUploadComponent](https://github.com/siacs/HttpUploadComponent) on server side
+
+####Version 1.4.5
+* fixes to message parser to not display some ejabberd muc status messages
+
+####Version 1.4.4
+* added unread count badges on supported devices
+* rewrote message parser
+
 ####Version 1.4.0
 * send button turns into quick action button to offer faster access to take photo, send location or record audio
 * visually seperate merged messages

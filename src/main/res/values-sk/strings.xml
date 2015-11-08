@@ -74,13 +74,10 @@
   <string name="clear_conversation_history">Vymazať históriu konverzácií</string>
   <string name="clear_histor_msg">Chcete vymazať všetky správy v tejto konverzácii?\n\n<b>Varovanie:</b> Toto neovplyvní správy uložené v iných zariadeniach alebo serveroch.</string>
   <string name="delete_messages">Vymazať správy</string>
-  <string name="also_end_conversation">Následne ukončiť aj túto konverzáciu</string>
   <string name="choose_presence">Vybrať aktualizáciu stavu pre kontakt</string>
-  <string name="send_plain_text_message">Poslať textovú správu</string>
   <string name="send_otr_message">Poslať OTR šifrovanú správu</string>
   <string name="send_pgp_message">Poslať OpenPGP šifrovanú správu</string>
   <string name="your_nick_has_been_changed">Prezývka sa zmenila</string>
-  <string name="download_image">Stiahnuť obrázok</string>
   <string name="send_unencrypted">Poslať nešifrované</string>
   <string name="decryption_failed">Zašifrovanie zlyhalo. Možno nemáte správny privátny kľúč.</string>
   <string name="openkeychain_required">OpenKeychain</string>
@@ -106,8 +103,6 @@
   <string name="pref_vibrate_summary">Vibrovať pri prijatí novej správy</string>
   <string name="pref_sound">Zvuk</string>
   <string name="pref_sound_summary">Prehrať zvuk spolu s upozornením</string>
-  <string name="pref_conference_notifications">Upozornenia pri skupinovej konverzácii</string>
-  <string name="pref_conference_notifications_summary">Vždy upozorniť pri novej konferenčnej správe, nie len ak je zvýraznená</string>
   <string name="pref_notification_grace_period">Doba na prečítanie upozornenia</string>
   <string name="pref_notification_grace_period_summary">Neupozorňovať krátko po obdržaní kópie správy</string>
   <string name="pref_advanced_options">Rozšírené možnosti</string>
@@ -150,7 +145,6 @@
   <string name="account_status_regis_not_sup">Server nepodporuje registráciu</string>
   <string name="account_status_security_error">Bezpečnostná chyba</string>
   <string name="account_status_incompatible_server">Nekompatibilný server</string>
-  <string name="encryption_choice_none">Čistý text</string>
   <string name="encryption_choice_otr">OTR</string>
   <string name="encryption_choice_pgp">OpenPGP</string>
   <string name="mgmt_account_edit">Upraviť účet</string>
@@ -187,7 +181,6 @@
   <string name="server_info_blocking">XEP-0191: Blocking Command</string>
   <string name="server_info_roster_version">XEP-0237: Roster Versioning</string>
   <string name="server_info_stream_management">XEP-0198: Stream Management</string>
-  <string name="server_info_pep">XEP-0163: PEP (Avatars)</string>
   <string name="server_info_available">dostupný</string>
   <string name="server_info_unavailable">nedostupný</string>
   <string name="missing_public_keys">Chýba oznámenie o verejnom kľúči</string>
@@ -289,15 +282,13 @@
   <string name="conference_members_only">Táto konverzácia je iba pre členov</string>
   <string name="conference_kicked">Vyčlenili vás z tejto konverzácie</string>
   <string name="using_account">Používa sa účet %s</string>
-  <string name="checking_image">Overuje sa obrázok na serveri HTTP</string>
-  <string name="image_file_deleted">Súbor s obrázkom bol vymazaný</string>
   <string name="not_connected_try_again">Nie ste pripojený. Skúste to neskôr</string>
-  <string name="check_image_filesize">Overiť veľkosť obrázku</string>
+  <string name="check_x_filesize">Overiť %s veľkosť</string>
   <string name="message_options">Možnosti správy</string>
   <string name="copy_text">Skopírovať text</string>
   <string name="copy_original_url">Skopírovať originálny URL</string>
   <string name="send_again">Poslať znova</string>
-  <string name="image_url">Obrázok URL</string>
+  <string name="file_url">URL súbor</string>
   <string name="message_text">Textová správa</string>
   <string name="url_copied_to_clipboard">URL skopírovaný do schránky</string>
   <string name="message_copied_to_clipboard">Správa skopírovaná do schránky</string>
@@ -389,7 +380,6 @@
   <string name="public_conference">Verejne prístupná skupinová konverzácia</string>
   <string name="private_conference">Súkromná konverzácia iba pre členov</string>
   <string name="conference_options">Možnosti skupinovej konverzácie</string>
-  <string name="members_only">Súkromný (Iba pre členov)</string>
   <string name="non_anonymous">Neanonymný</string>
   <string name="modified_conference_options">Možnosti skupinovej konverzácie nastavené!</string>
   <string name="could_not_modify_conference_options">Nepodarilo sa nastaviť možnosti skupinovej konverzácie</string>
@@ -429,7 +419,6 @@
   <string name="received_location">Prijatá poloha</string>
   <string name="title_undo_swipe_out_conversation">Konverzácia zatvorená</string>
   <string name="title_undo_swipe_out_muc">Opustil skupinovú konverzáciu</string>
-  <string name="pref_certificate_options">Možnosti certifikátu</string>
   <string name="pref_dont_trust_system_cas_title">Nedôverovať systému CAs</string>
   <string name="pref_dont_trust_system_cas_summary">Všetky certifikáty musia byť ručne schválené</string>
   <string name="pref_remove_trusted_certificates_title">Odstrániť certifikáty</string>
@@ -438,6 +427,11 @@
   <string name="dialog_manage_certs_title">Odstrániť certifikáty</string>
   <string name="dialog_manage_certs_positivebutton">Vymazať výber</string>
   <string name="dialog_manage_certs_negativebutton">Zrušiť</string>
+  <plurals name="toast_delete_certificates">
+    <item quantity="one">%d certifikátu vymazaných</item>
+    <item quantity="few">%d certifikátu vymazaných</item>
+    <item quantity="other">%d certifikátov vymazaných</item>
+  </plurals>
   <plurals name="select_contact">
     <item quantity="one">Vybrať %d kontaktu</item>
     <item quantity="few">Vybrať %d kontaktu</item>
@@ -448,4 +442,7 @@
   <string name="none">Žiadny</string>
   <string name="recently_used">Naposledy použitý</string>
   <string name="choose_quick_action">Vybrať rýchlu voľbu</string>
+  <string name="search_for_contacts_or_groups">Hľadať kontakty alebo skupiny</string>
+  <string name="send_private_message">Poslať súkromnú správu</string>
+  <string name="user_has_left_conference">%s opustil skupinovú konverzáciu!</string>
 </resources>

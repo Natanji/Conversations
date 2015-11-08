@@ -2,12 +2,10 @@ package eu.siacs.conversations.xmpp.stanzas;
 
 import android.util.Pair;
 
-import java.text.ParseException;
-
 import eu.siacs.conversations.parser.AbstractParser;
 import eu.siacs.conversations.xml.Element;
 
-public class MessagePacket extends AbstractStanza {
+public class MessagePacket extends AbstractAcknowledgeableStanza {
 	public static final int TYPE_CHAT = 0;
 	public static final int TYPE_NORMAL = 2;
 	public static final int TYPE_GROUPCHAT = 3;
@@ -27,6 +25,11 @@ public class MessagePacket extends AbstractStanza {
 		Element body = new Element("body");
 		body.setContent(text);
 		this.children.add(0, body);
+	}
+
+	public void setAxolotlMessage(Element axolotlMessage) {
+		this.children.remove(findChild("body"));
+		this.children.add(0, axolotlMessage);
 	}
 
 	public void setType(int type) {

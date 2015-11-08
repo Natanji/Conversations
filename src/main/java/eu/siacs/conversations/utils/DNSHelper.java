@@ -1,29 +1,38 @@
 package eu.siacs.conversations.utils;
 
-import de.measite.minidns.Client;
-import de.measite.minidns.DNSMessage;
-import de.measite.minidns.Record;
-import de.measite.minidns.Record.TYPE;
-import de.measite.minidns.Record.CLASS;
-import de.measite.minidns.record.SRV;
-import de.measite.minidns.record.A;
-import de.measite.minidns.record.AAAA;
-import de.measite.minidns.record.Data;
-import de.measite.minidns.util.NameUtil;
-import eu.siacs.conversations.Config;
-import eu.siacs.conversations.xmpp.jid.Jid;
+import android.annotation.TargetApi;
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.Network;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Parcelable;
+import android.util.Log;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.Random;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 
-import android.os.Bundle;
-import android.util.Log;
+import de.measite.minidns.Client;
+import de.measite.minidns.DNSMessage;
+import de.measite.minidns.Record;
+import de.measite.minidns.Record.CLASS;
+import de.measite.minidns.Record.TYPE;
+import de.measite.minidns.record.A;
+import de.measite.minidns.record.AAAA;
+import de.measite.minidns.record.Data;
+import de.measite.minidns.record.SRV;
+import de.measite.minidns.util.NameUtil;
+import eu.siacs.conversations.Config;
+import eu.siacs.conversations.xmpp.jid.Jid;
 
 public class DNSHelper {
 
@@ -35,25 +44,62 @@ public class DNSHelper {
 
 	protected static Client client = new Client();
 
-	public static Bundle getSRVRecord(final Jid jid) throws IOException {
+	public static Bundle getSRVRecord(final Jid jid, Context context) throws IOException {
         final String host = jid.getDomainpart();
-		String dns[] = client.findDNS();
-
-		if (dns != null) {
-			for (String dnsserver : dns) {
-				InetAddress ip = InetAddress.getByName(dnsserver);
-				Bundle b = queryDNS(host, ip);
-				if (b.containsKey("values")) {
-					return b;
-				}
+		final List<InetAddress> servers = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP ? getDnsServers(context) : getDnsServersPreLollipop();
+		Bundle b = new Bundle();
+		for(InetAddress server : servers) {
+			b = queryDNS(host, server);
+			if (b.containsKey("values")) {
+				return b;
 			}
 		}
-		return queryDNS(host, InetAddress.getByName("8.8.8.8"));
+		if (!b.containsKey("values")) {
+			Log.d(Config.LOGTAG,"all dns queries failed. provide fallback A record");
+			ArrayList<Parcelable> values = new ArrayList<>();
+			values.add(createNamePortBundle(host,5222));
+			b.putParcelableArrayList("values",values);
+		}
+		return b;
+	}
+
+	@TargetApi(21)
+	private static List<InetAddress> getDnsServers(Context context) {
+		List<InetAddress> servers = new ArrayList<>();
+		ConnectivityManager connectivityManager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+		Network[] networks = connectivityManager == null ? null : connectivityManager.getAllNetworks();
+		if (networks == null) {
+			return getDnsServersPreLollipop();
+		}
+		for(int i = 0; i < networks.length; ++i) {
+			LinkProperties linkProperties = connectivityManager.getLinkProperties(networks[i]);
+			if (linkProperties != null) {
+				servers.addAll(linkProperties.getDnsServers());
+			}
+		}
+		if (servers.size() > 0) {
+			Log.d(Config.LOGTAG,"used lollipop variant to discover dns servers in "+networks.length+" networks");
+		}
+		return servers.size() > 0 ? servers : getDnsServersPreLollipop();
+	}
+
+	private static List<InetAddress> getDnsServersPreLollipop() {
+		List<InetAddress> servers = new ArrayList<>();
+		String[] dns = client.findDNS();
+		for(int i = 0; i < dns.length; ++i) {
+			try {
+				servers.add(InetAddress.getByName(dns[i]));
+			} catch (UnknownHostException e) {
+				//ignore
+			}
+		}
+		return servers;
 	}
 
 	public static Bundle queryDNS(String host, InetAddress dnsServer) {
 		Bundle bundle = new Bundle();
 		try {
+			client.setTimeout(Config.PING_TIMEOUT * 1000);
 			String qname = "_xmpp-client._tcp." + host;
 			Log.d(Config.LOGTAG, "using dns server: " + dnsServer.getHostAddress() + " to look up " + host);
 			DNSMessage message = client.query(qname, TYPE.SRV, CLASS.IN, dnsServer.getHostAddress());
@@ -97,14 +143,23 @@ public class DNSHelper {
 			ArrayList<Bundle> values = new ArrayList<>();
 			if (result.size() == 0) {
 				DNSMessage response;
-				response = client.query(host, TYPE.A, CLASS.IN, dnsServer.getHostAddress());
-				for(int i = 0; i < response.getAnswers().length; ++i) {
-					values.add(createNamePortBundle(host,5222,response.getAnswers()[i].getPayload()));
+				try {
+					response = client.query(host, TYPE.A, CLASS.IN, dnsServer.getHostAddress());
+					for (int i = 0; i < response.getAnswers().length; ++i) {
+						values.add(createNamePortBundle(host, 5222, response.getAnswers()[i].getPayload()));
+					}
+				} catch (SocketTimeoutException e) {
+					Log.d(Config.LOGTAG,"ignoring timeout exception when querying A record on "+dnsServer.getHostAddress());
 				}
-				response = client.query(host, TYPE.AAAA, CLASS.IN, dnsServer.getHostAddress());
-				for(int i = 0; i < response.getAnswers().length; ++i) {
-					values.add(createNamePortBundle(host,5222,response.getAnswers()[i].getPayload()));
+				try {
+					response = client.query(host, TYPE.AAAA, CLASS.IN, dnsServer.getHostAddress());
+					for (int i = 0; i < response.getAnswers().length; ++i) {
+						values.add(createNamePortBundle(host, 5222, response.getAnswers()[i].getPayload()));
+					}
+				} catch (SocketTimeoutException e) {
+					Log.d(Config.LOGTAG,"ignoring timeout exception when querying AAAA record on "+dnsServer.getHostAddress());
 				}
+				values.add(createNamePortBundle(host,5222));
 				bundle.putParcelableArrayList("values", values);
 				return bundle;
 			}
@@ -112,9 +167,13 @@ public class DNSHelper {
 				if (ips6.containsKey(srv.getName())) {
 					values.add(createNamePortBundle(srv.getName(),srv.getPort(),ips6));
 				} else {
-					DNSMessage response = client.query(srv.getName(), TYPE.AAAA, CLASS.IN, dnsServer.getHostAddress());
-					for(int i = 0; i < response.getAnswers().length; ++i) {
-						values.add(createNamePortBundle(srv.getName(),srv.getPort(),response.getAnswers()[i].getPayload()));
+					try {
+						DNSMessage response = client.query(srv.getName(), TYPE.AAAA, CLASS.IN, dnsServer.getHostAddress());
+						for (int i = 0; i < response.getAnswers().length; ++i) {
+							values.add(createNamePortBundle(srv.getName(), srv.getPort(), response.getAnswers()[i].getPayload()));
+						}
+					} catch (SocketTimeoutException e) {
+						Log.d(Config.LOGTAG,"ignoring timeout exception when querying AAAA record on "+dnsServer.getHostAddress());
 					}
 				}
 				if (ips4.containsKey(srv.getName())) {
@@ -131,7 +190,6 @@ public class DNSHelper {
 		} catch (SocketTimeoutException e) {
 			bundle.putString("error", "timeout");
 		} catch (Exception e) {
-			Log.d(Config.LOGTAG,e.getMessage());
 			bundle.putString("error", "unhandled");
 		}
 		return bundle;

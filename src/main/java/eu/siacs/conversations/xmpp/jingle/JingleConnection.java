@@ -1,6 +1,13 @@
 package eu.siacs.conversations.xmpp.jingle;
 
-import java.net.URLConnection;
+import android.content.Intent;
+import android.net.Uri;
+import android.util.Log;
+import android.util.Pair;
+
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -9,17 +16,18 @@ import java.util.Locale;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 
-import android.content.Intent;
-import android.net.Uri;
-import android.os.SystemClock;
-import android.util.Log;
 import eu.siacs.conversations.Config;
+import eu.siacs.conversations.crypto.axolotl.AxolotlService;
+import eu.siacs.conversations.crypto.axolotl.OnMessageCreatedCallback;
+import eu.siacs.conversations.crypto.axolotl.XmppAxolotlMessage;
 import eu.siacs.conversations.entities.Account;
 import eu.siacs.conversations.entities.Conversation;
-import eu.siacs.conversations.entities.Downloadable;
 import eu.siacs.conversations.entities.DownloadableFile;
-import eu.siacs.conversations.entities.DownloadablePlaceholder;
 import eu.siacs.conversations.entities.Message;
+import eu.siacs.conversations.entities.Transferable;
+import eu.siacs.conversations.entities.TransferablePlaceholder;
+import eu.siacs.conversations.persistance.FileBackend;
+import eu.siacs.conversations.services.AbstractConnectionManager;
 import eu.siacs.conversations.services.XmppConnectionService;
 import eu.siacs.conversations.xml.Element;
 import eu.siacs.conversations.xmpp.OnIqPacketReceived;
@@ -29,7 +37,7 @@ import eu.siacs.conversations.xmpp.jingle.stanzas.JinglePacket;
 import eu.siacs.conversations.xmpp.jingle.stanzas.Reason;
 import eu.siacs.conversations.xmpp.stanzas.IqPacket;
 
-public class JingleConnection implements Downloadable {
+public class JingleConnection implements Transferable {
 
 	private JingleConnectionManager mJingleConnectionManager;
 	private XmppConnectionService mXmppConnectionService;
@@ -40,10 +48,10 @@ public class JingleConnection implements Downloadable {
 	protected static final int JINGLE_STATUS_TRANSMITTING = 5;
 	protected static final int JINGLE_STATUS_FAILED = 99;
 
-	private int ibbBlockSize = 4096;
+	private int ibbBlockSize = 8192;
 
 	private int mJingleStatus = -1;
-	private int mStatus = Downloadable.STATUS_UNKNOWN;
+	private int mStatus = Transferable.STATUS_UNKNOWN;
 	private Message message;
 	private String sessionId;
 	private Account account;
@@ -60,20 +68,24 @@ public class JingleConnection implements Downloadable {
 	private String contentCreator;
 
 	private int mProgress = 0;
-	private long mLastGuiRefresh = 0;
 
 	private boolean receivedCandidate = false;
 	private boolean sentCandidate = false;
 
 	private boolean acceptedAutomatically = false;
 
+	private XmppAxolotlMessage mXmppAxolotlMessage;
+
 	private JingleTransport transport = null;
+
+	private OutputStream mFileOutputStream;
+	private InputStream mFileInputStream;
 
 	private OnIqPacketReceived responseListener = new OnIqPacketReceived() {
 
 		@Override
 		public void onIqPacketReceived(Account account, IqPacket packet) {
-			if (packet.getType() == IqPacket.TYPE.ERROR) {
+			if (packet.getType() != IqPacket.TYPE.RESULT) {
 				fail();
 			}
 		}
@@ -85,15 +97,13 @@ public class JingleConnection implements Downloadable {
 		public void onFileTransmitted(DownloadableFile file) {
 			if (responder.equals(account.getJid())) {
 				sendSuccess();
-				if (acceptedAutomatically) {
-					message.markUnread();
-					JingleConnection.this.mXmppConnectionService
-							.getNotificationService().push(message);
-				}
 				mXmppConnectionService.getFileBackend().updateFileParams(message);
 				mXmppConnectionService.databaseBackend.createMessage(message);
-				mXmppConnectionService.markMessage(message,
-						Message.STATUS_RECEIVED);
+				mXmppConnectionService.markMessage(message,Message.STATUS_RECEIVED);
+				if (acceptedAutomatically) {
+					message.markUnread();
+					JingleConnection.this.mXmppConnectionService.getNotificationService().push(message);
+				}
 			} else {
 				if (message.getEncryption() == Message.ENCRYPTION_PGP || message.getEncryption() == Message.ENCRYPTION_DECRYPTED) {
 					file.delete();
@@ -113,6 +123,14 @@ public class JingleConnection implements Downloadable {
 			JingleConnection.this.fail();
 		}
 	};
+
+	public InputStream getFileInputStream() {
+		return this.mFileInputStream;
+	}
+
+	public OutputStream getFileOutputStream() {
+		return this.mFileOutputStream;
+	}
 
 	private OnProxyActivated onProxyActivated = new OnProxyActivated() {
 
@@ -195,12 +213,27 @@ public class JingleConnection implements Downloadable {
 		mXmppConnectionService.sendIqPacket(account,response,null);
 	}
 
-	public void init(Message message) {
+	public void init(final Message message) {
+		if (message.getEncryption() == Message.ENCRYPTION_AXOLOTL) {
+			Conversation conversation = message.getConversation();
+			conversation.getAccount().getAxolotlService().prepareKeyTransportMessage(conversation.getContact(), new OnMessageCreatedCallback() {
+				@Override
+				public void run(XmppAxolotlMessage xmppAxolotlMessage) {
+					init(message, xmppAxolotlMessage);
+				}
+			});
+		} else {
+			init(message, null);
+		}
+	}
+
+	private void init(Message message, XmppAxolotlMessage xmppAxolotlMessage) {
+		this.mXmppAxolotlMessage = xmppAxolotlMessage;
 		this.contentCreator = "initiator";
 		this.contentName = this.mJingleConnectionManager.nextRandomId();
 		this.message = message;
-		this.message.setDownloadable(this);
-		this.mStatus = Downloadable.STATUS_UPLOADING;
+		this.message.setTransferable(this);
+		this.mStatus = Transferable.STATUS_UPLOADING;
 		this.account = message.getConversation().getAccount();
 		this.initiator = this.account.getJid();
 		this.responder = this.message.getCounterpart();
@@ -239,8 +272,7 @@ public class JingleConnection implements Downloadable {
 										});
 								mergeCandidate(candidate);
 							} else {
-								Log.d(Config.LOGTAG,
-										"no primary candidate of our own was found");
+								Log.d(Config.LOGTAG, "no primary candidate of our own was found");
 								sendInitRequest();
 							}
 						}
@@ -256,8 +288,8 @@ public class JingleConnection implements Downloadable {
 						packet.getFrom().toBareJid(), false);
 		this.message = new Message(conversation, "", Message.ENCRYPTION_NONE);
 		this.message.setStatus(Message.STATUS_RECEIVED);
-		this.mStatus = Downloadable.STATUS_OFFER;
-		this.message.setDownloadable(this);
+		this.mStatus = Transferable.STATUS_OFFER;
+		this.message.setTransferable(this);
         final Jid from = packet.getFrom();
 		this.message.setCounterpart(from);
 		this.account = account;
@@ -268,13 +300,16 @@ public class JingleConnection implements Downloadable {
 		this.contentCreator = content.getAttribute("creator");
 		this.contentName = content.getAttribute("name");
 		this.transportId = content.getTransportId();
-		this.mergeCandidates(JingleCandidate.parse(content.socks5transport()
-				.getChildren()));
+		this.mergeCandidates(JingleCandidate.parse(content.socks5transport().getChildren()));
 		this.fileOffer = packet.getJingleContent().getFileOffer();
 
 		mXmppConnectionService.sendIqPacket(account,packet.generateResponse(IqPacket.TYPE.RESULT),null);
 
 		if (fileOffer != null) {
+			Element encrypted = fileOffer.findChild("encrypted", AxolotlService.PEP_PREFIX);
+			if (encrypted != null) {
+				this.mXmppAxolotlMessage = XmppAxolotlMessage.fromElement(encrypted, packet.getFrom().toBareJid());
+			}
 			Element fileSize = fileOffer.findChild("size");
 			Element fileNameElement = fileOffer.findChild("name");
 			if (fileNameElement != null) {
@@ -320,10 +355,8 @@ public class JingleConnection implements Downloadable {
 				message.setBody(Long.toString(size));
 				conversation.add(message);
 				mXmppConnectionService.updateConversationUi();
-				if (size < this.mJingleConnectionManager
-						.getAutoAcceptFileSize()) {
-					Log.d(Config.LOGTAG, "auto accepting file from "
-							+ packet.getFrom());
+				if (size < this.mJingleConnectionManager.getAutoAcceptFileSize()) {
+					Log.d(Config.LOGTAG, "auto accepting file from "+ packet.getFrom());
 					this.acceptedAutomatically = true;
 					this.sendAccept();
 				} else {
@@ -334,22 +367,36 @@ public class JingleConnection implements Downloadable {
 									+ " allowed size:"
 									+ this.mJingleConnectionManager
 											.getAutoAcceptFileSize());
-					this.mXmppConnectionService.getNotificationService()
-							.push(message);
+					this.mXmppConnectionService.getNotificationService().push(message);
 				}
-				this.file = this.mXmppConnectionService.getFileBackend()
-						.getFile(message, false);
-				if (message.getEncryption() == Message.ENCRYPTION_OTR) {
+				this.file = this.mXmppConnectionService.getFileBackend().getFile(message, false);
+				if (mXmppAxolotlMessage != null) {
+					XmppAxolotlMessage.XmppAxolotlKeyTransportMessage transportMessage = account.getAxolotlService().processReceivingKeyTransportMessage(mXmppAxolotlMessage);
+					if (transportMessage != null) {
+						message.setEncryption(Message.ENCRYPTION_AXOLOTL);
+						this.file.setKey(transportMessage.getKey());
+						this.file.setIv(transportMessage.getIv());
+						message.setAxolotlFingerprint(transportMessage.getFingerprint());
+					} else {
+						Log.d(Config.LOGTAG,"could not process KeyTransportMessage");
+					}
+				} else if (message.getEncryption() == Message.ENCRYPTION_OTR) {
 					byte[] key = conversation.getSymmetricKey();
 					if (key == null) {
 						this.sendCancel();
 						this.fail();
 						return;
 					} else {
-						this.file.setKey(key);
+						this.file.setKeyAndIv(key);
 					}
 				}
-				this.file.setExpectedSize(size);
+				this.mFileOutputStream = AbstractConnectionManager.createOutputStream(this.file,message.getEncryption() == Message.ENCRYPTION_AXOLOTL);
+				if (message.getEncryption() == Message.ENCRYPTION_OTR && Config.REPORT_WRONG_FILESIZE_IN_OTR_JINGLE) {
+					this.file.setExpectedSize((size / 16 + 1) * 16);
+				} else {
+					this.file.setExpectedSize(size);
+				}
+				Log.d(Config.LOGTAG, "receiving file: expecting size of " + this.file.getExpectedSize());
 			} else {
 				this.sendCancel();
 				this.fail();
@@ -365,16 +412,35 @@ public class JingleConnection implements Downloadable {
 		Content content = new Content(this.contentCreator, this.contentName);
 		if (message.getType() == Message.TYPE_IMAGE || message.getType() == Message.TYPE_FILE) {
 			content.setTransportId(this.transportId);
-			this.file = this.mXmppConnectionService.getFileBackend().getFile(
-					message, false);
-			if (message.getEncryption() == Message.ENCRYPTION_OTR) {
-				Conversation conversation = this.message.getConversation();
-				this.mXmppConnectionService.renewSymmetricKey(conversation);
-				content.setFileOffer(this.file, true);
-				this.file.setKey(conversation.getSymmetricKey());
-			} else {
-				content.setFileOffer(this.file, false);
+			this.file = this.mXmppConnectionService.getFileBackend().getFile(message, false);
+			Pair<InputStream,Integer> pair;
+			try {
+				if (message.getEncryption() == Message.ENCRYPTION_OTR) {
+					Conversation conversation = this.message.getConversation();
+					if (!this.mXmppConnectionService.renewSymmetricKey(conversation)) {
+						Log.d(Config.LOGTAG, account.getJid().toBareJid() + ": could not set symmetric key");
+						cancel();
+					}
+					this.file.setKeyAndIv(conversation.getSymmetricKey());
+					pair = AbstractConnectionManager.createInputStream(this.file, false);
+					this.file.setExpectedSize(pair.second);
+					content.setFileOffer(this.file, true);
+				} else if (message.getEncryption() == Message.ENCRYPTION_AXOLOTL) {
+					this.file.setKey(mXmppAxolotlMessage.getInnerKey());
+					this.file.setIv(mXmppAxolotlMessage.getIV());
+					pair = AbstractConnectionManager.createInputStream(this.file, true);
+					this.file.setExpectedSize(pair.second);
+					content.setFileOffer(this.file, false).addChild(mXmppAxolotlMessage.toElement());
+				} else {
+					pair = AbstractConnectionManager.createInputStream(this.file, false);
+					this.file.setExpectedSize(pair.second);
+					content.setFileOffer(this.file, false);
+				}
+			} catch (FileNotFoundException e) {
+				cancel();
+				return;
 			}
+			this.mFileInputStream = pair.first;
 			this.transportId = this.mJingleConnectionManager.nextRandomId();
 			content.setTransportId(this.transportId);
 			content.socks5transport().setChildren(getCandidatesAsElements());
@@ -383,7 +449,7 @@ public class JingleConnection implements Downloadable {
 
 				@Override
 				public void onIqPacketReceived(Account account, IqPacket packet) {
-					if (packet.getType() != IqPacket.TYPE.ERROR) {
+					if (packet.getType() == IqPacket.TYPE.RESULT) {
 						Log.d(Config.LOGTAG,account.getJid().toBareJid()+": other party received offer");
 						mJingleStatus = JINGLE_STATUS_INITIATED;
 						mXmppConnectionService.markMessage(message, Message.STATUS_OFFERED);
@@ -408,7 +474,7 @@ public class JingleConnection implements Downloadable {
 
 	private void sendAccept() {
 		mJingleStatus = JINGLE_STATUS_ACCEPTED;
-		this.mStatus = Downloadable.STATUS_DOWNLOADING;
+		this.mStatus = Transferable.STATUS_DOWNLOADING;
 		mXmppConnectionService.updateConversationUi();
 		this.mJingleConnectionManager.getPrimaryCandidate(this.account, new OnPrimaryCandidateFound() {
 			@Override
@@ -568,12 +634,11 @@ public class JingleConnection implements Downloadable {
 								@Override
 								public void onIqPacketReceived(Account account,
 										IqPacket packet) {
-									if (packet.getType() == IqPacket.TYPE.ERROR) {
+									if (packet.getType() != IqPacket.TYPE.RESULT) {
 										onProxyActivated.failed();
 									} else {
 										onProxyActivated.success();
-										sendProxyActivated(connection
-												.getCandidate().getCid());
+										sendProxyActivated(connection.getCandidate().getCid());
 									}
 								}
 							});
@@ -639,7 +704,7 @@ public class JingleConnection implements Downloadable {
 		this.disconnectSocks5Connections();
 		this.mJingleStatus = JINGLE_STATUS_FINISHED;
 		this.message.setStatus(Message.STATUS_RECEIVED);
-		this.message.setDownloadable(null);
+		this.message.setTransferable(null);
 		this.mXmppConnectionService.updateMessage(message);
 		this.mJingleConnectionManager.finishConnection(this);
 	}
@@ -672,8 +737,7 @@ public class JingleConnection implements Downloadable {
 		JinglePacket answer = bootstrapPacket("transport-accept");
 		Content content = new Content("initiator", "a-file-offer");
 		content.setTransportId(this.transportId);
-		content.ibbTransport().setAttribute("block-size",
-				Integer.toString(this.ibbBlockSize));
+		content.ibbTransport().setAttribute("block-size",this.ibbBlockSize);
 		answer.setContent(content);
 		this.sendJinglePacket(answer);
 		return true;
@@ -716,7 +780,7 @@ public class JingleConnection implements Downloadable {
 		if (this.transport != null && this.transport instanceof JingleInbandTransport) {
 			this.transport.disconnect();
 		}
-		this.message.setDownloadable(null);
+		this.message.setTransferable(null);
 		this.mJingleConnectionManager.finishConnection(this);
 	}
 
@@ -728,7 +792,7 @@ public class JingleConnection implements Downloadable {
 		this.sendCancel();
 		this.mJingleConnectionManager.finishConnection(this);
 		if (this.responder.equals(account.getJid())) {
-			this.message.setDownloadable(new DownloadablePlaceholder(Downloadable.STATUS_FAILED));
+			this.message.setTransferable(new TransferablePlaceholder(Transferable.STATUS_FAILED));
 			if (this.file!=null) {
 				file.delete();
 			}
@@ -736,7 +800,7 @@ public class JingleConnection implements Downloadable {
 		} else {
 			this.mXmppConnectionService.markMessage(this.message,
 					Message.STATUS_SEND_FAILED);
-			this.message.setDownloadable(null);
+			this.message.setTransferable(null);
 		}
 	}
 
@@ -746,9 +810,11 @@ public class JingleConnection implements Downloadable {
 		if (this.transport != null && this.transport instanceof JingleInbandTransport) {
 			this.transport.disconnect();
 		}
+		FileBackend.close(mFileInputStream);
+		FileBackend.close(mFileOutputStream);
 		if (this.message != null) {
 			if (this.responder.equals(account.getJid())) {
-				this.message.setDownloadable(new DownloadablePlaceholder(Downloadable.STATUS_FAILED));
+				this.message.setTransferable(new TransferablePlaceholder(Transferable.STATUS_FAILED));
 				if (this.file!=null) {
 					file.delete();
 				}
@@ -756,7 +822,7 @@ public class JingleConnection implements Downloadable {
 			} else {
 				this.mXmppConnectionService.markMessage(this.message,
 						Message.STATUS_SEND_FAILED);
-				this.message.setDownloadable(null);
+				this.message.setTransferable(null);
 			}
 		}
 		this.mJingleConnectionManager.finishConnection(this);
@@ -899,10 +965,7 @@ public class JingleConnection implements Downloadable {
 
 	public void updateProgress(int i) {
 		this.mProgress = i;
-		if (SystemClock.elapsedRealtime() - this.mLastGuiRefresh > Config.PROGRESS_UI_UPDATE_INTERVAL) {
-			this.mLastGuiRefresh = SystemClock.elapsedRealtime();
-			mXmppConnectionService.updateConversationUi();
-		}
+		mXmppConnectionService.updateConversationUi();
 	}
 
 	interface OnProxyActivated {
@@ -955,23 +1018,7 @@ public class JingleConnection implements Downloadable {
 		return this.mProgress;
 	}
 
-	@Override
-	public String getMimeType() {
-		if (this.message.getType() == Message.TYPE_FILE) {
-			String mime = null;
-			String path = this.message.getRelativeFilePath();
-			if (path != null && !this.message.getRelativeFilePath().isEmpty()) {
-				mime = URLConnection.guessContentTypeFromName(this.message.getRelativeFilePath());
-				if (mime!=null) {
-					return  mime;
-				} else {
-					return "";
-				}
-			} else {
-				return "";
-			}
-		} else {
-			return "image/webp";
-		}
+	public AbstractConnectionManager getConnectionManager() {
+		return this.mJingleConnectionManager;
 	}
 }

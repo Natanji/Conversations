@@ -74,13 +74,10 @@
   <string name="clear_conversation_history">Netejar historial de conversa</string>
   <string name="clear_histor_msg">Vols esborrar tots els missatges d\'aquesta conversa?\n\n<b>Avís:</b> Això no afectarà els missatges desats en altres dispositius o servidors.</string>
   <string name="delete_messages">Esborrar missatges</string>
-  <string name="also_end_conversation">Finalitzar aquesta conversa més tard</string>
   <string name="choose_presence">Selecciona recurs del contacte</string>
-  <string name="send_plain_text_message">Enviar missatge de text</string>
   <string name="send_otr_message">Enviar missatge xifrat amb OTR</string>
   <string name="send_pgp_message">Enviar missatge xifrat amb OpenPGP</string>
   <string name="your_nick_has_been_changed">El teu sobrenom s\'ha modificat</string>
-  <string name="download_image">Descarregar imatge</string>
   <string name="send_unencrypted">Enviar sense xifrar</string>
   <string name="decryption_failed">Ha fallat el desxiframent. Potser no tinguis la clau privada apropiada.</string>
   <string name="openkeychain_required">OpenKeychain</string>
@@ -106,8 +103,6 @@
   <string name="pref_vibrate_summary">Vibra quan arriba un nou missatge</string>
   <string name="pref_sound">So</string>
   <string name="pref_sound_summary">Reprodueix el to de trucada amb la notificació</string>
-  <string name="pref_conference_notifications">Notificacions de conferència</string>
-  <string name="pref_conference_notifications_summary">Sempre notifica quan arriba un nou missatge de conferència en comptes de només quan està destacat</string>
   <string name="pref_notification_grace_period">Notificació del període d\'espera</string>
   <string name="pref_notification_grace_period_summary">Desactiva les notificacions durant un breu termini després de rebre una còpia de missatges carbon</string>
   <string name="pref_advanced_options">Opcions avançades</string>
@@ -150,7 +145,6 @@
   <string name="account_status_regis_not_sup">El servidor no admet el registre</string>
   <string name="account_status_security_error">Error de seguretat</string>
   <string name="account_status_incompatible_server">Servidor incompatible</string>
-  <string name="encryption_choice_none">Text pla</string>
   <string name="encryption_choice_otr">OTR</string>
   <string name="encryption_choice_pgp">OpenPGP</string>
   <string name="mgmt_account_edit">Edita compte</string>
@@ -187,7 +181,6 @@
   <string name="server_info_blocking">XEP-0191: Ordre de bloqueix</string>
   <string name="server_info_roster_version">XEP-0237: Plantilla de les versions</string>
   <string name="server_info_stream_management">XEP-0198: Gestió de la transmissió</string>
-  <string name="server_info_pep">XEP-0163: PEP(Avatars)</string>
   <string name="server_info_available">Disponible</string>
   <string name="server_info_unavailable">No disponible</string>
   <string name="missing_public_keys">Clau pública d\'invitació perduda</string>
@@ -289,15 +282,11 @@
   <string name="conference_members_only">La sala es nomès per membres</string>
   <string name="conference_kicked">Estàs expulsat d\'aquesta sala</string>
   <string name="using_account">Utlitzant el compte %s</string>
-  <string name="checking_image">Comprovant l\'imatge en el client HTTP</string>
-  <string name="image_file_deleted">L\'arxiu de l\'imatge ha sigut eliminada</string>
   <string name="not_connected_try_again">No estàs connectat. Intenta-ho més tard</string>
-  <string name="check_image_filesize">Comprobant el tamany de l\'imatge</string>
   <string name="message_options">Opcions del missatge</string>
   <string name="copy_text">Copiar el text</string>
   <string name="copy_original_url">Copiar la URL original</string>
   <string name="send_again">Envia una altra vegada</string>
-  <string name="image_url">Imatge URL</string>
   <string name="message_text">Missatge de text</string>
   <string name="url_copied_to_clipboard">URL copiada al portapapers</string>
   <string name="message_copied_to_clipboard">Missatge copiat al portapapers</string>
@@ -389,7 +378,6 @@
   <string name="public_conference">Comferència de la conversació  d\'accés pùblic</string>
   <string name="private_conference">Privada, únicament els membres de la conferència de conversació</string>
   <string name="conference_options">Opcions de la sala</string>
-  <string name="members_only">Privat( Nomès membres)</string>
   <string name="non_anonymous">Sense anonimat</string>
   <string name="modified_conference_options">Modificat opcions de la sala!</string>
   <string name="could_not_modify_conference_options">No s\'ha pogut modificar les opcions de la sala</string>
@@ -429,7 +417,6 @@
   <string name="received_location">Localització rebuda</string>
   <string name="title_undo_swipe_out_conversation">Conversa tancada</string>
   <string name="title_undo_swipe_out_muc">S\'ha sortit de la conferència</string>
-  <string name="pref_certificate_options">Opcions de certificats</string>
   <string name="pref_dont_trust_system_cas_title">No confiar en les CAs del sistema</string>
   <string name="pref_dont_trust_system_cas_summary">Tots els certificats han de ser aprovats manualment</string>
   <string name="pref_remove_trusted_certificates_title">Eliminar certificats</string>

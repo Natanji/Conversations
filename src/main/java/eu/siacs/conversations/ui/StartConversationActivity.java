@@ -42,6 +42,7 @@ import android.widget.Checkable;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Spinner;
+import android.widget.Toast;
 
 import com.google.zxing.integration.android.IntentIntegrator;
 import com.google.zxing.integration.android.IntentResult;
@@ -263,9 +264,12 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 
 	protected void openConversationForBookmark(int position) {
 		Bookmark bookmark = (Bookmark) conferences.get(position);
-		Conversation conversation = xmppConnectionService
-			.findOrCreateConversation(bookmark.getAccount(),
-					bookmark.getJid(), true);
+		Jid jid = bookmark.getJid();
+		if (jid == null) {
+			Toast.makeText(this,R.string.invalid_jid,Toast.LENGTH_SHORT).show();
+			return;
+		}
+		Conversation conversation = xmppConnectionService.findOrCreateConversation(bookmark.getAccount(),jid, true);
 		conversation.setBookmark(bookmark);
 		if (!conversation.getMucOptions().online()) {
 			xmppConnectionService.joinMuc(conversation);
@@ -285,7 +289,7 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 
 	protected void toggleContactBlock() {
 		final int position = contact_context_id;
-		BlockContactDialog.show(this, xmppConnectionService, (Contact)contacts.get(position));
+		BlockContactDialog.show(this, xmppConnectionService, (Contact) contacts.get(position));
 	}
 
 	protected void deleteContact() {
@@ -295,7 +299,7 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 		builder.setNegativeButton(R.string.cancel, null);
 		builder.setTitle(R.string.action_delete_contact);
 		builder.setMessage(getString(R.string.remove_contact_text,
-					contact.getJid()));
+				contact.getJid()));
 		builder.setPositiveButton(R.string.delete, new OnClickListener() {
 
 			@Override
@@ -315,7 +319,7 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 		builder.setNegativeButton(R.string.cancel, null);
 		builder.setTitle(R.string.delete_bookmark);
 		builder.setMessage(getString(R.string.remove_bookmark_text,
-					bookmark.getJid()));
+				bookmark.getJid()));
 		builder.setPositiveButton(R.string.delete, new OnClickListener() {
 
 			@Override
@@ -364,7 +368,11 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 						}
 						final Jid accountJid;
 						try {
-							accountJid = Jid.fromString((String) spinner.getSelectedItem());
+							if (Config.DOMAIN_LOCK != null) {
+								accountJid = Jid.fromParts((String) spinner.getSelectedItem(),Config.DOMAIN_LOCK,null);
+							} else {
+								accountJid = Jid.fromString((String) spinner.getSelectedItem());
+							}
 						} catch (final InvalidJidException e) {
 							return;
 						}
@@ -375,8 +383,7 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 							jid.setError(getString(R.string.invalid_jid));
 							return;
 						}
-						final Account account = xmppConnectionService
-							.findAccountByJid(accountJid);
+						final Account account = xmppConnectionService.findAccountByJid(accountJid);
 						if (account == null) {
 							dialog.dismiss();
 							return;
@@ -424,7 +431,11 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 						}
 						final Jid accountJid;
 						try {
-							accountJid = Jid.fromString((String) spinner.getSelectedItem());
+							if (Config.DOMAIN_LOCK != null) {
+								accountJid = Jid.fromParts((String) spinner.getSelectedItem(),Config.DOMAIN_LOCK,null);
+							} else {
+								accountJid = Jid.fromString((String) spinner.getSelectedItem());
+							}
 						} catch (final InvalidJidException e) {
 							return;
 						}
@@ -447,16 +458,18 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 							} else {
 								final Bookmark bookmark = new Bookmark(account,conferenceJid.toBareJid());
 								bookmark.setAutojoin(true);
+								String nick = conferenceJid.getResourcepart();
+								if (nick != null && !nick.isEmpty()) {
+									bookmark.setNick(nick);
+								}
 								account.getBookmarks().add(bookmark);
-								xmppConnectionService
-									.pushBookmarks(account);
+								xmppConnectionService.pushBookmarks(account);
 								final Conversation conversation = xmppConnectionService
 									.findOrCreateConversation(account,
 											conferenceJid, true);
 								conversation.setBookmark(bookmark);
 								if (!conversation.getMucOptions().online()) {
-									xmppConnectionService
-										.joinMuc(conversation);
+									xmppConnectionService.joinMuc(conversation);
 								}
 								dialog.dismiss();
 								switchToConversation(conversation);
@@ -572,7 +585,11 @@ public class StartConversationActivity extends XmppActivity implements OnRosterU
 		this.mActivatedAccounts.clear();
 		for (Account account : xmppConnectionService.getAccounts()) {
 			if (account.getStatus() != Account.State.DISABLED) {
-				this.mActivatedAccounts.add(account.getJid().toBareJid().toString());
+				if (Config.DOMAIN_LOCK != null) {
+					this.mActivatedAccounts.add(account.getJid().getLocalpart());
+				} else {
+					this.mActivatedAccounts.add(account.getJid().toBareJid().toString());
+				}
 			}
 		}
 		final Intent intent = getIntent();

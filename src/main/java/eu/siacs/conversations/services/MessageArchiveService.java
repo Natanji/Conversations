@@ -54,6 +54,18 @@ public class MessageArchiveService implements OnAdvancedStreamFeaturesLoaded {
 		this.execute(query);
 	}
 
+	public void catchupMUC(final Conversation conversation) {
+		if (conversation.getLastMessageTransmitted() < 0 && conversation.countMessages() == 0) {
+			query(conversation,
+					0,
+					System.currentTimeMillis());
+		} else {
+			query(conversation,
+					conversation.getLastMessageTransmitted(),
+					System.currentTimeMillis());
+		}
+	}
+
 	private long getLastMessageTransmitted(final Account account) {
 		long timestamp = 0;
 		for(final Conversation conversation : mXmppConnectionService.getConversations()) {
@@ -68,7 +80,15 @@ public class MessageArchiveService implements OnAdvancedStreamFeaturesLoaded {
 	}
 
 	public Query query(final Conversation conversation) {
-		return query(conversation,conversation.getAccount().getXmppConnection().getLastSessionEstablished());
+		if (conversation.getLastMessageTransmitted() < 0 && conversation.countMessages() == 0) {
+			return query(conversation,
+					0,
+					System.currentTimeMillis());
+		} else {
+			return query(conversation,
+					conversation.getLastMessageTransmitted(),
+					conversation.getAccount().getXmppConnection().getLastSessionEstablished());
+		}
 	}
 
 	public Query query(final Conversation conversation, long end) {
@@ -111,7 +131,7 @@ public class MessageArchiveService implements OnAdvancedStreamFeaturesLoaded {
 			this.mXmppConnectionService.sendIqPacket(account, packet, new OnIqPacketReceived() {
 				@Override
 				public void onIqPacketReceived(Account account, IqPacket packet) {
-					if (packet.getType() == IqPacket.TYPE.ERROR) {
+					if (packet.getType() != IqPacket.TYPE.RESULT) {
 						Log.d(Config.LOGTAG, account.getJid().toBareJid().toString() + ": error executing mam: " + packet.toString());
 						finalizeQuery(query);
 					}

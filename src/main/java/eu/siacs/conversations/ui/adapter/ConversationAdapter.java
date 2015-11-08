@@ -3,7 +3,6 @@ package eu.siacs.conversations.ui.adapter;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
@@ -22,8 +21,8 @@ import java.util.concurrent.RejectedExecutionException;
 
 import eu.siacs.conversations.R;
 import eu.siacs.conversations.entities.Conversation;
-import eu.siacs.conversations.entities.Downloadable;
 import eu.siacs.conversations.entities.Message;
+import eu.siacs.conversations.entities.Transferable;
 import eu.siacs.conversations.ui.ConversationActivity;
 import eu.siacs.conversations.ui.XmppActivity;
 import eu.siacs.conversations.utils.UIHelper;
@@ -48,7 +47,7 @@ public class ConversationAdapter extends ArrayAdapter<Conversation> {
 		if (this.activity instanceof ConversationActivity) {
 			View swipeableItem = view.findViewById(R.id.swipeable_item);
 			ConversationActivity a = (ConversationActivity) this.activity;
-			int c = !a.isConversationsOverviewHideable() && conversation == a.getSelectedConversation() ? a.getSecondaryBackgroundColor() : a.getPrimaryBackgroundColor();
+			int c = a.highlightSelectedConversations() && conversation == a.getSelectedConversation() ? a.getSecondaryBackgroundColor() : a.getPrimaryBackgroundColor();
 			swipeableItem.setBackgroundColor(c);
 		}
 		TextView convName = (TextView) view.findViewById(R.id.conversation_name);
@@ -69,9 +68,9 @@ public class ConversationAdapter extends ArrayAdapter<Conversation> {
 			convName.setTypeface(null, Typeface.NORMAL);
 		}
 
-		if (message.getImageParams().width > 0
-				&& (message.getDownloadable() == null
-				|| message.getDownloadable().getStatus() != Downloadable.STATUS_DELETED)) {
+		if (message.getFileParams().width > 0
+				&& (message.getTransferable() == null
+				|| message.getTransferable().getStatus() != Transferable.STATUS_DELETED)) {
 			mLastMessage.setVisibility(View.GONE);
 			imagePreview.setVisibility(View.VISIBLE);
 			activity.loadBitmap(message, imagePreview);

@@ -2,7 +2,7 @@
 
 Conversations: the very last word in instant messaging
 
-[![Google Play](http://developer.android.com/images/brand/en_generic_rgb_wo_60.png)](https://play.google.com/store/apps/details?id=eu.siacs.conversations) [![Amazon App Store](https://images-na.ssl-images-amazon.com/images/G/01/AmazonMobileApps/amazon-apps-store-us-black.png)](http://www.amazon.com/dp/B00WD35AAC/)
+[![Google Play](http://developer.android.com/images/brand/en_generic_rgb_wo_60.png)](https://play.google.com/store/apps/details?id=eu.siacs.conversations&referrer=utm_source%3Dgithub) [![Amazon App Store](https://images-na.ssl-images-amazon.com/images/G/01/AmazonMobileApps/amazon-apps-store-us-black.png)](http://www.amazon.com/dp/B00WD35AAC/)
 
 ![screenshots](https://raw.githubusercontent.com/siacs/Conversations/master/screenshots.png)
 
@@ -16,9 +16,9 @@ Conversations: the very last word in instant messaging
 
 ## Features
 
-* End-to-end encryption with either [OTR](https://otr.cypherpunks.ca/) or [OpenPGP](http://www.openpgp.org/about_openpgp/)
+* End-to-end encryption with [OMEMO](http://conversations.im/omemo/), [OTR](https://otr.cypherpunks.ca/), or [OpenPGP](http://www.openpgp.org/about_openpgp/)
 * Send and receive images as well as other kind of files
-* Share your location via an external [plug-in](https://play.google.com/store/apps/details?id=eu.siacs.conversations.sharelocation)
+* Share your location via an external [plug-in](https://play.google.com/store/apps/details?id=eu.siacs.conversations.sharelocation&referrer=utm_source%3Dgithub)
 * Indication when your contact has read your message
 * Intuitive UI that follows Android Design guidelines
 * Pictures / Avatars for your Contacts
@@ -39,23 +39,26 @@ support these extensions; therefore to get the most out of Conversations you
 should consider either switching to an XMPP server that does or — even better —
 run your own XMPP server for you and your friends. These XEP's are:
 
-* XEP-0065: SOCKS5 Bytestreams (or mod_proxy65). Will be used to transfer
+* [XEP-0065: SOCKS5 Bytestreams](http://xmpp.org/extensions/xep-0065.html) (or mod_proxy65). Will be used to transfer
   files if both parties are behind a firewall (NAT).
-* XEP-0163: Personal Eventing Protocol for avatars
-* XEP-0198: Stream Management allows XMPP to survive small network outages and
+* [XEP-0163: Personal Eventing Protocol](http://xmpp.org/extensions/xep-0163.html) for avatars and OMEMO.
+* [XEP-0191: Blocking command](http://xmpp.org/extensions/xep-0191.html) lets you blacklist spammers or block contacts
+  without removing them from your roster.
+* [XEP-0198: Stream Management](http://xmpp.org/extensions/xep-0198.html) allows XMPP to survive small network outages and
   changes of the underlying TCP connection.
-* XEP-0280: Message Carbons which automatically syncs the messages you send to
+* [XEP-0280: Message Carbons](http://xmpp.org/extensions/xep-0280.html) which automatically syncs the messages you send to
   your desktop client and thus allows you to switch seamlessly from your mobile
   client to your desktop client and back within one conversation.
-* XEP-0237: Roster Versioning mainly to save bandwidth on poor mobile connections
-* XEP-0313: Message Archive Management synchronize message history with the
+* [XEP-0237: Roster Versioning](http://xmpp.org/extensions/xep-0237.html) mainly to save bandwidth on poor mobile connections
+* [XEP-0313: Message Archive Management](http://xmpp.org/extensions/xep-0313.html) synchronize message history with the
   server. Catch up with messages that were sent while Conversations was
   offline.
-* XEP-0352: Client State Indication lets the server know whether or not
+* [XEP-0352: Client State Indication](http://xmpp.org/extensions/xep-0352.html) lets the server know whether or not
   Conversations is in the background. Allows the server to save bandwidth by
   withholding unimportant packages.
-* XEP-0191: Blocking command lets you blacklist spammers or block contacts
-  without removing them from your roster.
+* [XEP-0363: HTTP File Upload](http://xmpp.org/extensions/xep-0363.html) allows you to share files in conferences and with offline
+  contacts. Requires an [additional component](https://github.com/siacs/HttpUploadComponent)
+  on your server. Alternatively, an [Ejabberd contrib-module](https://github.com/processone/ejabberd-contrib/tree/master/mod_http_upload) and a [Prosody module](http://modules.prosody.im/mod_http_upload.html) are available.
 
 ## Team
 
@@ -78,6 +81,7 @@ run your own XMPP server for you and your friends. These XEP's are:
 #### Logo
 * [Ilia Rostovtsev](https://github.com/qooob) (Progress)
 * [Diego Turtulici](http://efesto.eigenlab.org/~diesys) (Original)
+* [fiaxh](https://github.com/fiaxh) (OMEMO)
 
 #### Translations
 Translations are managed on [Transifex](https://www.transifex.com/projects/p/conversations/)
@@ -89,12 +93,12 @@ Translations are managed on [Transifex](https://www.transifex.com/projects/p/con
 #### How do I install Conversations?
 
 Conversations is entirely open source and licensed under GPLv3. So if you are a
-software developer you can check out the sources from GitHub and use ant to
+software developer you can check out the sources from GitHub and use Gradle to
 build your apk file.
 
 The more convenient way — which not only gives you automatic updates but also
 supports the further development of Conversations — is to buy the App in the
-Google [Play Store](https://play.google.com/store/apps/details?id=eu.siacs.conversations).
+Google [Play Store](https://play.google.com/store/apps/details?id=eu.siacs.conversations&referrer=utm_source%3Dgithub).
 
 Buying the App from the Play Store will also give you access to our [beta test](#beta).
 
@@ -129,6 +133,18 @@ Conversations will automatically look up the SRV records for your domain name
 which can point to any hostname port combination. If your server doesn’t provide
 those please contact your admin and have them read
 [this](http://prosody.im/doc/dns#srv_records)
+
+#### I get 'Incompatible Server'
+
+As regular user you should be picking a different server. The server you selected
+is probably insecure and/or very old.
+
+If you are a server administrator you should make sure that your server provides
+STARTTLS. XMPP over TLS (on a different port) is not sufficient.
+
+On rare occasions this error message might also be caused by a server not providing
+a login (SASL) mechanism that Conversations is able to handle. Conversations supports
+SCRAM-SHA1, PLAIN, EXTERNAL (client certs) and DIGEST-MD5.
 
 #### Conversations doesn't work for me. Where can I get help?
 
@@ -232,11 +248,9 @@ I am available for hire. Contact me via XMPP: `inputmice@siacs.eu`
 
 ### Security
 
-#### Why are there two end-to-end encryption methods and which one should I choose?
+#### Why are there three end-to-end encryption methods and which one should I choose?
 
-In most cases OTR should be the encryption method of choice. It works out of the
-box with most contacts as long as they are online. However PGP can, in some
-cases, (message carbons to multiple clients) be more flexible.
+In most cases OTR should be the encryption method of choice. It works out of the box with most contacts as long as they are online. However, openPGP can, in some cases, (message carbons to multiple clients) be more flexible. Unlike OTR, OMEMO works even when a contact is offline, and works with multiple devices. It also allows asynchronous file-transfer when the server has [HTTP File Upload](http://xmpp.org/extensions/xep-0363.html). However, OMEMO is not as widely supported as OTR and is currently implemented only by Conversations. OMEMO should be preffered over OTR for contacts who use Conversations.
 
 #### How do I use OpenPGP
 
@@ -252,7 +266,7 @@ decrypting and encrypting takes longer than OTR. It is however asynchronous and
 works well with message carbons.
 
 To use OpenPGP you have to install the open source app
-[OpenKeychain](www.openkeychain.org) and then long press on the account in
+[OpenKeychain](http://www.openkeychain.org) and then long press on the account in
 manage accounts and choose renew PGP announcement from the contextual menu.
 
 #### How does the encryption for conferences work?

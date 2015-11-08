@@ -12,13 +12,18 @@ import eu.siacs.conversations.xmpp.jid.InvalidJidException;
 import eu.siacs.conversations.xmpp.jid.Jid;
 
 public class Element {
-	protected String name;
-	protected Hashtable<String, String> attributes = new Hashtable<>();
-	protected String content;
+	private final String name;
+	private Hashtable<String, String> attributes = new Hashtable<>();
+	private String content;
 	protected List<Element> children = new ArrayList<>();
 
 	public Element(String name) {
 		this.name = name;
+	}
+
+	public Element(String name, String xmlns) {
+		this.name = name;
+		this.setAttribute("xmlns", xmlns);
 	}
 
 	public Element addChild(Element child) {
@@ -64,10 +69,9 @@ public class Element {
 
 	public Element findChild(String name, String xmlns) {
 		for (Element child : this.children) {
-			if (child.getName().equals(name)
-					&& (child.getAttribute("xmlns").equals(xmlns))) {
+			if (name.equals(child.getName()) && xmlns.equals(child.getAttribute("xmlns"))) {
 				return child;
-					}
+			}
 		}
 		return null;
 	}
@@ -94,7 +98,7 @@ public class Element {
 		return this;
 	}
 
-	public String getContent() {
+	public final String getContent() {
 		return content;
 	}
 
@@ -158,7 +162,7 @@ public class Element {
 		return elementOutput.toString();
 	}
 
-	public String getName() {
+	public final String getName() {
 		return name;
 	}
 

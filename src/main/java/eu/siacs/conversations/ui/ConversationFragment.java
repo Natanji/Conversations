@@ -1,14 +1,17 @@
 package eu.siacs.conversations.ui;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Fragment;
 import android.app.PendingIntent;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentSender;
 import android.content.IntentSender.SendIntentException;
 import android.os.Bundle;
+import android.support.annotation.Nullable;
 import android.text.InputType;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
@@ -34,8 +37,8 @@ import android.widget.Toast;
 
 import net.java.otr4j.session.SessionStatus;
 
-import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -43,15 +46,16 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import eu.siacs.conversations.Config;
 import eu.siacs.conversations.R;
 import eu.siacs.conversations.crypto.PgpEngine;
+import eu.siacs.conversations.crypto.axolotl.AxolotlService;
 import eu.siacs.conversations.entities.Account;
 import eu.siacs.conversations.entities.Contact;
 import eu.siacs.conversations.entities.Conversation;
-import eu.siacs.conversations.entities.Downloadable;
 import eu.siacs.conversations.entities.DownloadableFile;
-import eu.siacs.conversations.entities.DownloadablePlaceholder;
 import eu.siacs.conversations.entities.Message;
 import eu.siacs.conversations.entities.MucOptions;
 import eu.siacs.conversations.entities.Presences;
+import eu.siacs.conversations.entities.Transferable;
+import eu.siacs.conversations.entities.TransferablePlaceholder;
 import eu.siacs.conversations.services.XmppConnectionService;
 import eu.siacs.conversations.ui.XmppActivity.OnPresenceSelected;
 import eu.siacs.conversations.ui.XmppActivity.OnValueEdited;
@@ -197,21 +201,47 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			}
 		}
 	};
-	private IntentSender askForPassphraseIntent = null;
+	private final int KEYCHAIN_UNLOCK_NOT_REQUIRED = 0;
+	private final int KEYCHAIN_UNLOCK_REQUIRED = 1;
+	private final int KEYCHAIN_UNLOCK_PENDING = 2;
+	private int keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
 	protected OnClickListener clickToDecryptListener = new OnClickListener() {
 
 		@Override
 		public void onClick(View v) {
-			if (activity.hasPgp() && askForPassphraseIntent != null) {
-				try {
-					getActivity().startIntentSenderForResult(
-							askForPassphraseIntent,
-							ConversationActivity.REQUEST_DECRYPT_PGP, null, 0,
-							0, 0);
-					askForPassphraseIntent = null;
-				} catch (SendIntentException e) {
-					//
+			if (keychainUnlock == KEYCHAIN_UNLOCK_REQUIRED
+					&& activity.hasPgp() && !conversation.getAccount().getPgpDecryptionService().isRunning()) {
+				keychainUnlock = KEYCHAIN_UNLOCK_PENDING;
+				updateSnackBar(conversation);
+				Message message = getLastPgpDecryptableMessage();
+				if (message != null) {
+					activity.xmppConnectionService.getPgpEngine().decrypt(message, new UiCallback<Message>() {
+						@Override
+						public void success(Message object) {
+							conversation.getAccount().getPgpDecryptionService().onKeychainUnlocked();
+							keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
+						}
+
+						@Override
+						public void error(int errorCode, Message object) {
+							keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
+						}
+
+						@Override
+						public void userInputRequried(PendingIntent pi, Message object) {
+							try {
+								activity.startIntentSenderForResult(pi.getIntentSender(),
+										ConversationActivity.REQUEST_DECRYPT_PGP, null, 0, 0, 0);
+							} catch (SendIntentException e) {
+								keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
+								updatePgpMessages();
+							}
+						}
+					});
 				}
+			} else {
+				keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
+				updatePgpMessages();
 			}
 		}
 	};
@@ -222,8 +252,6 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			activity.verifyOtrSessionDialog(conversation, v);
 		}
 	};
-	private ConcurrentLinkedQueue<Message> mEncryptedMessages = new ConcurrentLinkedQueue<>();
-	private boolean mDecryptJobRunning = false;
 	private OnEditorActionListener mEditorActionListener = new OnEditorActionListener() {
 
 		@Override
@@ -231,7 +259,9 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			if (actionId == EditorInfo.IME_ACTION_SEND) {
 				InputMethodManager imm = (InputMethodManager) v.getContext()
 						.getSystemService(Context.INPUT_METHOD_SERVICE);
-				imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+				if (imm.isFullscreenMode()) {
+					imm.hideSoftInputFromWindow(v.getWindowToken(), 0);
+				}
 				sendMessage();
 				return true;
 			} else {
@@ -292,36 +322,54 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		if (body.length() == 0 || this.conversation == null) {
 			return;
 		}
-		Message message = new Message(conversation, body, conversation.getNextEncryption(activity.forceEncryption()));
+		Message message = new Message(conversation, body, conversation.getNextEncryption());
 		if (conversation.getMode() == Conversation.MODE_MULTI) {
 			if (conversation.getNextCounterpart() != null) {
 				message.setCounterpart(conversation.getNextCounterpart());
 				message.setType(Message.TYPE_PRIVATE);
 			}
 		}
-		if (conversation.getNextEncryption(activity.forceEncryption()) == Message.ENCRYPTION_OTR) {
-			sendOtrMessage(message);
-		} else if (conversation.getNextEncryption(activity.forceEncryption()) == Message.ENCRYPTION_PGP) {
-			sendPgpMessage(message);
-		} else {
-			sendPlainTextMessage(message);
+		switch (conversation.getNextEncryption()) {
+			case Message.ENCRYPTION_OTR:
+				sendOtrMessage(message);
+				break;
+			case Message.ENCRYPTION_PGP:
+				sendPgpMessage(message);
+				break;
+			case Message.ENCRYPTION_AXOLOTL:
+				if(!activity.trustKeysIfNeeded(ConversationActivity.REQUEST_TRUST_KEYS_TEXT)) {
+					sendAxolotlMessage(message);
+				}
+				break;
+			default:
+				sendPlainTextMessage(message);
 		}
 	}
 
 	public void updateChatMsgHint() {
-		if (conversation.getMode() == Conversation.MODE_MULTI
-				&& conversation.getNextCounterpart() != null) {
+		final boolean multi = conversation.getMode() == Conversation.MODE_MULTI;
+		if (multi && conversation.getNextCounterpart() != null) {
 			this.mEditMessage.setHint(getString(
 					R.string.send_private_message_to,
 					conversation.getNextCounterpart().getResourcepart()));
+		} else if (multi && !conversation.getMucOptions().participating()) {
+			this.mEditMessage.setHint(R.string.you_are_not_participating);
 		} else {
-			switch (conversation.getNextEncryption(activity.forceEncryption())) {
+			switch (conversation.getNextEncryption()) {
 				case Message.ENCRYPTION_NONE:
 					mEditMessage
-							.setHint(getString(R.string.send_plain_text_message));
+							.setHint(getString(R.string.send_unencrypted_message));
 					break;
 				case Message.ENCRYPTION_OTR:
 					mEditMessage.setHint(getString(R.string.send_otr_message));
+					break;
+				case Message.ENCRYPTION_AXOLOTL:
+					AxolotlService axolotlService = conversation.getAccount().getAxolotlService();
+					if (axolotlService.trustedSessionVerified(conversation)) {
+						mEditMessage.setHint(getString(R.string.send_omemo_x509_message));
+					} else {
+						mEditMessage.setHint(getString(R.string.send_omemo_message));
+					}
 					break;
 				case Message.ENCRYPTION_PGP:
 					mEditMessage.setHint(getString(R.string.send_pgp_message));
@@ -333,21 +381,26 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		}
 	}
 
-	private void setupIme() {
-		if (((ConversationActivity) getActivity()).usingEnterKey()) {
+	public void setupIme() {
+		if (activity == null) {
+			return;
+		} else if (activity.usingEnterKey() && activity.enterIsSend()) {
+			mEditMessage.setInputType(mEditMessage.getInputType() & (~InputType.TYPE_TEXT_FLAG_MULTI_LINE));
+			mEditMessage.setInputType(mEditMessage.getInputType() & (~InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE));
+		} else if (activity.usingEnterKey()) {
+			mEditMessage.setInputType(mEditMessage.getInputType() | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
 			mEditMessage.setInputType(mEditMessage.getInputType() & (~InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE));
 		} else {
+			mEditMessage.setInputType(mEditMessage.getInputType() | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
 			mEditMessage.setInputType(mEditMessage.getInputType() | InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE);
 		}
 	}
 
 	@Override
-	public View onCreateView(final LayoutInflater inflater,
-							 ViewGroup container, Bundle savedInstanceState) {
+	public View onCreateView(final LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
 		final View view = inflater.inflate(R.layout.fragment_conversation, container, false);
 		view.setOnClickListener(null);
 		mEditMessage = (EditMessage) view.findViewById(R.id.textinput);
-		setupIme();
 		mEditMessage.setOnClickListener(new OnClickListener() {
 
 			@Override
@@ -377,19 +430,20 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 				if (message.getStatus() <= Message.STATUS_RECEIVED) {
 					if (message.getConversation().getMode() == Conversation.MODE_MULTI) {
 						if (message.getCounterpart() != null) {
-							if (!message.getCounterpart().isBareJid()) {
-								highlightInConference(message.getCounterpart().getResourcepart());
-							} else {
-								highlightInConference(message.getCounterpart().toString());
+							String user = message.getCounterpart().isBareJid() ? message.getCounterpart().toString() : message.getCounterpart().getResourcepart();
+							if (!message.getConversation().getMucOptions().isUserInRoom(user)) {
+								Toast.makeText(activity,activity.getString(R.string.user_has_left_conference,user),Toast.LENGTH_SHORT).show();
 							}
+							highlightInConference(user);
 						}
 					} else {
-						activity.switchToContactDetails(message.getContact());
+						activity.switchToContactDetails(message.getContact(), message.getAxolotlFingerprint());
 					}
 				} else {
 					Account account = message.getConversation().getAccount();
 					Intent intent = new Intent(activity, EditAccountActivity.class);
 					intent.putExtra("jid", account.getJid().toBareJid().toString());
+					intent.putExtra("fingerprint", message.getAxolotlFingerprint());
 					startActivity(intent);
 				}
 			}
@@ -402,7 +456,14 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 						if (message.getStatus() <= Message.STATUS_RECEIVED) {
 							if (message.getConversation().getMode() == Conversation.MODE_MULTI) {
 								if (message.getCounterpart() != null) {
-									privateMessageWith(message.getCounterpart());
+									String user = message.getCounterpart().getResourcepart();
+									if (user != null) {
+										if (message.getConversation().getMucOptions().isUserInRoom(user)) {
+											privateMessageWith(message.getCounterpart());
+										} else {
+											Toast.makeText(activity, activity.getString(R.string.user_has_left_conference, user), Toast.LENGTH_SHORT).show();
+										}
+									}
 								}
 							}
 						} else {
@@ -437,34 +498,37 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			MenuItem shareWith = menu.findItem(R.id.share_with);
 			MenuItem sendAgain = menu.findItem(R.id.send_again);
 			MenuItem copyUrl = menu.findItem(R.id.copy_url);
-			MenuItem downloadImage = menu.findItem(R.id.download_image);
+			MenuItem downloadFile = menu.findItem(R.id.download_file);
 			MenuItem cancelTransmission = menu.findItem(R.id.cancel_transmission);
-			if ((m.getType() != Message.TYPE_TEXT && m.getType() != Message.TYPE_PRIVATE)
-					|| m.getDownloadable() != null || GeoHelper.isGeoUri(m.getBody())) {
-				copyText.setVisible(false);
+			if ((m.getType() == Message.TYPE_TEXT || m.getType() == Message.TYPE_PRIVATE)
+					&& m.getTransferable() == null
+					&& !GeoHelper.isGeoUri(m.getBody())
+					&& m.treatAsDownloadable() != Message.Decision.MUST) {
+				copyText.setVisible(true);
 			}
-			if ((m.getType() == Message.TYPE_TEXT
-					|| m.getType() == Message.TYPE_PRIVATE
-					|| m.getDownloadable() != null)
-					&& (!GeoHelper.isGeoUri(m.getBody()))) {
-				shareWith.setVisible(false);
+			if ((m.getType() != Message.TYPE_TEXT
+					&& m.getType() != Message.TYPE_PRIVATE
+					&& m.getTransferable() == null)
+					|| (GeoHelper.isGeoUri(m.getBody()))) {
+				shareWith.setVisible(true);
 			}
-			if (m.getStatus() != Message.STATUS_SEND_FAILED) {
-				sendAgain.setVisible(false);
+			if (m.getStatus() == Message.STATUS_SEND_FAILED) {
+				sendAgain.setVisible(true);
 			}
-			if (((m.getType() != Message.TYPE_IMAGE && m.getDownloadable() == null)
-					|| m.getImageParams().url == null) && !GeoHelper.isGeoUri(m.getBody())) {
-				copyUrl.setVisible(false);
+			if (m.hasFileOnRemoteHost()
+					|| GeoHelper.isGeoUri(m.getBody())
+					|| m.treatAsDownloadable() == Message.Decision.MUST) {
+				copyUrl.setVisible(true);
 			}
-			if (m.getType() != Message.TYPE_TEXT
-					|| m.getDownloadable() != null
-					|| !m.bodyContainsDownloadable()) {
-				downloadImage.setVisible(false);
+			if ((m.getType() == Message.TYPE_TEXT && m.getTransferable() == null && m.treatAsDownloadable() != Message.Decision.NEVER)
+					|| (m.isFileOrImage() && m.getTransferable() instanceof TransferablePlaceholder && m.hasFileOnRemoteHost())){
+				downloadFile.setVisible(true);
+				downloadFile.setTitle(activity.getString(R.string.download_x_file,UIHelper.getFileDescriptionString(activity, m)));
 			}
-			if (!((m.getDownloadable() != null && !(m.getDownloadable() instanceof DownloadablePlaceholder))
+			if ((m.getTransferable() != null && !(m.getTransferable() instanceof TransferablePlaceholder))
 					|| (m.isFileOrImage() && (m.getStatus() == Message.STATUS_WAITING
-					|| m.getStatus() == Message.STATUS_OFFERED)))) {
-				cancelTransmission.setVisible(false);
+					|| m.getStatus() == Message.STATUS_OFFERED))) {
+				cancelTransmission.setVisible(true);
 			}
 		}
 	}
@@ -484,8 +548,8 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			case R.id.copy_url:
 				copyUrl(selectedMessage);
 				return true;
-			case R.id.download_image:
-				downloadImage(selectedMessage);
+			case R.id.download_file:
+				downloadFile(selectedMessage);
 				return true;
 			case R.id.cancel_transmission:
 				cancelTransmission(selectedMessage);
@@ -506,14 +570,18 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 					activity.xmppConnectionService.getFileBackend()
 							.getJingleFileUri(message));
 			shareIntent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-			String path = message.getRelativeFilePath();
-			String mime = path == null ? null : URLConnection.guessContentTypeFromName(path);
+			String mime = message.getMimeType();
 			if (mime == null) {
-				mime = "image/webp";
+				mime = "*/*";
 			}
 			shareIntent.setType(mime);
 		}
-		activity.startActivity(Intent.createChooser(shareIntent, getText(R.string.share_with)));
+		try {
+			activity.startActivity(Intent.createChooser(shareIntent, getText(R.string.share_with)));
+		} catch (ActivityNotFoundException e) {
+			//This should happen only on faulty androids because normally chooser is always available
+			Toast.makeText(activity,R.string.no_application_found_to_open_file,Toast.LENGTH_SHORT).show();
+		}
 	}
 
 	private void copyText(Message message) {
@@ -529,7 +597,7 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			DownloadableFile file = activity.xmppConnectionService.getFileBackend().getFile(message);
 			if (!file.exists()) {
 				Toast.makeText(activity, R.string.file_deleted, Toast.LENGTH_SHORT).show();
-				message.setDownloadable(new DownloadablePlaceholder(Downloadable.STATUS_DELETED));
+				message.setTransferable(new TransferablePlaceholder(Transferable.STATUS_DELETED));
 				return;
 			}
 		}
@@ -542,9 +610,12 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		if (GeoHelper.isGeoUri(message.getBody())) {
 			resId = R.string.location;
 			url = message.getBody();
+		} else if (message.hasFileOnRemoteHost()) {
+			resId = R.string.file_url;
+			url = message.getFileParams().url.toString();
 		} else {
-			resId = R.string.image_url;
-			url = message.getImageParams().url.toString();
+			url = message.getBody().trim();
+			resId = R.string.file_url;
 		}
 		if (activity.copyTextToClipboard(url, resId)) {
 			Toast.makeText(activity, R.string.url_copied_to_clipboard,
@@ -552,15 +623,15 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		}
 	}
 
-	private void downloadImage(Message message) {
+	private void downloadFile(Message message) {
 		activity.xmppConnectionService.getHttpConnectionManager()
-				.createNewConnection(message);
+				.createNewDownloadConnection(message,true);
 	}
 
 	private void cancelTransmission(Message message) {
-		Downloadable downloadable = message.getDownloadable();
-		if (downloadable != null) {
-			downloadable.cancel();
+		Transferable transferable = message.getTransferable();
+		if (transferable != null) {
+			transferable.cancel();
 		} else {
 			activity.xmppConnectionService.markMessage(message, Message.STATUS_SEND_FAILED);
 		}
@@ -589,7 +660,6 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 
 	@Override
 	public void onStop() {
-		mDecryptJobRunning = false;
 		super.onStop();
 		if (this.conversation != null) {
 			final String msg = mEditMessage.getText().toString();
@@ -610,9 +680,8 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		if (conversation == null) {
 			return;
 		}
-
 		this.activity = (ConversationActivity) getActivity();
-
+		setupIme();
 		if (this.conversation != null) {
 			final String msg = mEditMessage.getText().toString();
 			this.conversation.setNextMessage(msg);
@@ -622,17 +691,19 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			this.conversation.trim();
 		}
 
-		this.askForPassphraseIntent = null;
+		this.keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
 		this.conversation = conversation;
-		this.mDecryptJobRunning = false;
-		this.mEncryptedMessages.clear();
 		if (this.conversation.getMode() == Conversation.MODE_MULTI) {
 			this.conversation.setNextCounterpart(null);
 		}
+		boolean canWrite = this.conversation.getMode() == Conversation.MODE_SINGLE || this.conversation.getMucOptions().participating();
+		this.mEditMessage.setEnabled(canWrite);
+		this.mSendButton.setEnabled(canWrite);
 		this.mEditMessage.setKeyboardListener(null);
 		this.mEditMessage.setText("");
 		this.mEditMessage.append(this.conversation.getNextMessage());
 		this.mEditMessage.setKeyboardListener(this);
+		messageListAdapter.updatePreferences();
 		this.messagesView.setAdapter(messageListAdapter);
 		updateMessages();
 		this.messagesLoaded = true;
@@ -724,7 +795,7 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 				default:
 					break;
 			}
-		} else if (askForPassphraseIntent != null) {
+		} else if (keychainUnlock == KEYCHAIN_UNLOCK_REQUIRED) {
 			showSnackbar(R.string.openpgp_messages_found, R.string.decrypt, clickToDecryptListener);
 		} else if (mode == Conversation.MODE_SINGLE
 				&& conversation.smpRequested()) {
@@ -748,19 +819,9 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			}
 			final ConversationActivity activity = (ConversationActivity) getActivity();
 			if (this.conversation != null) {
-				updateSnackBar(this.conversation);
 				conversation.populateWithMessages(ConversationFragment.this.messageList);
-				for (final Message message : this.messageList) {
-					if (message.getEncryption() == Message.ENCRYPTION_PGP
-							&& (message.getStatus() == Message.STATUS_RECEIVED || message
-							.getStatus() >= Message.STATUS_SEND)
-							&& message.getDownloadable() == null) {
-						if (!mEncryptedMessages.contains(message)) {
-							mEncryptedMessages.add(message);
-						}
-					}
-				}
-				decryptNext();
+				updatePgpMessages();
+				updateSnackBar(conversation);
 				updateStatusMessages();
 				this.messageListAdapter.notifyDataSetChanged();
 				updateChatMsgHint();
@@ -772,46 +833,27 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		}
 	}
 
-	private void decryptNext() {
-		Message next = this.mEncryptedMessages.peek();
-		PgpEngine engine = activity.xmppConnectionService.getPgpEngine();
-
-		if (next != null && engine != null && !mDecryptJobRunning) {
-			mDecryptJobRunning = true;
-			engine.decrypt(next, new UiCallback<Message>() {
-
-				@Override
-				public void userInputRequried(PendingIntent pi, Message message) {
-					mDecryptJobRunning = false;
-					askForPassphraseIntent = pi.getIntentSender();
-					updateSnackBar(conversation);
-				}
-
-				@Override
-				public void success(Message message) {
-					mDecryptJobRunning = false;
-					try {
-						mEncryptedMessages.remove();
-					} catch (final NoSuchElementException ignored) {
-
-					}
-					askForPassphraseIntent = null;
-					activity.xmppConnectionService.updateMessage(message);
-				}
-
-				@Override
-				public void error(int error, Message message) {
-					message.setEncryption(Message.ENCRYPTION_DECRYPTION_FAILED);
-					mDecryptJobRunning = false;
-					try {
-						mEncryptedMessages.remove();
-					} catch (final NoSuchElementException ignored) {
-
-					}
-					activity.xmppConnectionService.updateConversationUi();
-				}
-			});
+	public void updatePgpMessages() {
+		if (keychainUnlock != KEYCHAIN_UNLOCK_PENDING) {
+			if (getLastPgpDecryptableMessage() != null
+					&& !conversation.getAccount().getPgpDecryptionService().isRunning()) {
+				keychainUnlock = KEYCHAIN_UNLOCK_REQUIRED;
+			} else {
+				keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
+			}
 		}
+	}
+
+	@Nullable
+	private Message getLastPgpDecryptableMessage() {
+		for (final Message message : this.messageList) {
+			if (message.getEncryption() == Message.ENCRYPTION_PGP
+					&& (message.getStatus() == Message.STATUS_RECEIVED || message.getStatus() >= Message.STATUS_SEND)
+					&& message.getTransferable() == null) {
+				return message;
+			}
+		}
+		return null;
 	}
 
 	private void messageSent() {
@@ -819,6 +861,10 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		messagesView.setSelection(size - 1);
 		mEditMessage.setText("");
 		updateChatMsgHint();
+	}
+
+	public void setFocusOnInputField() {
+		mEditMessage.requestFocus();
 	}
 
 	enum SendButtonAction {TEXT, TAKE_PHOTO, SEND_LOCATION, RECORD_VOICE, CANCEL, CHOOSE_PICTURE}
@@ -912,7 +958,8 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		final SendButtonAction action;
 		final int status;
 		final boolean empty = this.mEditMessage == null || this.mEditMessage.getText().length() == 0;
-		if (c.getMode() == Conversation.MODE_MULTI) {
+		final boolean conference = c.getMode() == Conversation.MODE_MULTI;
+		if (conference && !c.getAccount().httpUploadAvailable()) {
 			if (empty && c.getNextCounterpart() != null) {
 				action = SendButtonAction.CANCEL;
 			} else {
@@ -920,28 +967,32 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			}
 		} else {
 			if (empty) {
-				String setting = activity.getPreferences().getString("quick_action","recent");
-				if (!setting.equals("none") && UIHelper.receivedLocationQuestion(conversation.getLatestMessage())) {
-					setting = "location";
-				} else if (setting.equals("recent")) {
-					setting = activity.getPreferences().getString("recently_used_quick_action","text");
-				}
-				switch (setting) {
-					case "photo":
-						action = SendButtonAction.TAKE_PHOTO;
-						break;
-					case "location":
-						action = SendButtonAction.SEND_LOCATION;
-						break;
-					case "voice":
-						action = SendButtonAction.RECORD_VOICE;
-						break;
-					case "picture":
-						action = SendButtonAction.CHOOSE_PICTURE;
-						break;
-					default:
-						action = SendButtonAction.TEXT;
-						break;
+				if (conference && c.getNextCounterpart() != null) {
+					action = SendButtonAction.CANCEL;
+				} else {
+					String setting = activity.getPreferences().getString("quick_action", "recent");
+					if (!setting.equals("none") && UIHelper.receivedLocationQuestion(conversation.getLatestMessage())) {
+						setting = "location";
+					} else if (setting.equals("recent")) {
+						setting = activity.getPreferences().getString("recently_used_quick_action", "text");
+					}
+					switch (setting) {
+						case "photo":
+							action = SendButtonAction.TAKE_PHOTO;
+							break;
+						case "location":
+							action = SendButtonAction.SEND_LOCATION;
+							break;
+						case "voice":
+							action = SendButtonAction.RECORD_VOICE;
+							break;
+						case "picture":
+							action = SendButtonAction.CHOOSE_PICTURE;
+							break;
+						default:
+							action = SendButtonAction.TEXT;
+							break;
+					}
 				}
 			} else {
 				action = SendButtonAction.TEXT;
@@ -1106,6 +1157,13 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		builder.create().show();
 	}
 
+	protected void sendAxolotlMessage(final Message message) {
+		final ConversationActivity activity = (ConversationActivity) getActivity();
+		final XmppConnectionService xmppService = activity.xmppConnectionService;
+		xmppService.sendMessage(message);
+		messageSent();
+	}
+
 	protected void sendOtrMessage(final Message message) {
 		final ConversationActivity activity = (ConversationActivity) getActivity();
 		final XmppConnectionService xmppService = activity.xmppConnectionService;
@@ -1148,6 +1206,7 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 		if (status == Account.State.ONLINE && conversation.setOutgoingChatState(ChatState.COMPOSING)) {
 			activity.xmppConnectionService.sendChatState(conversation);
 		}
+		activity.hideConversationsOverview();
 		updateSendButton();
 	}
 
@@ -1166,6 +1225,72 @@ public class ConversationFragment extends Fragment implements EditMessage.Keyboa
 			activity.xmppConnectionService.sendChatState(conversation);
 		}
 		updateSendButton();
+	}
+
+	private int completionIndex = 0;
+	private int lastCompletionLength = 0;
+	private String incomplete;
+	private int lastCompletionCursor;
+	private boolean firstWord = false;
+
+	@Override
+	public boolean onTabPressed(boolean repeated) {
+		if (conversation == null || conversation.getMode() == Conversation.MODE_SINGLE) {
+			return false;
+		}
+		if (repeated) {
+			completionIndex++;
+		} else {
+			lastCompletionLength = 0;
+			completionIndex = 0;
+			final String content = mEditMessage.getText().toString();
+			lastCompletionCursor = mEditMessage.getSelectionEnd();
+			int start = lastCompletionCursor > 0 ? content.lastIndexOf(" ",lastCompletionCursor-1) + 1 : 0;
+			firstWord = start == 0;
+			incomplete = content.substring(start,lastCompletionCursor);
+		}
+		List<String> completions = new ArrayList<>();
+		for(MucOptions.User user : conversation.getMucOptions().getUsers()) {
+			if (user.getName().startsWith(incomplete)) {
+				completions.add(user.getName()+(firstWord ? ": " : " "));
+			}
+		}
+		Collections.sort(completions);
+		if (completions.size() > completionIndex) {
+			String completion = completions.get(completionIndex).substring(incomplete.length());
+			mEditMessage.getEditableText().delete(lastCompletionCursor,lastCompletionCursor + lastCompletionLength);
+			mEditMessage.getEditableText().insert(lastCompletionCursor, completion);
+			lastCompletionLength = completion.length();
+		} else {
+			completionIndex = -1;
+			mEditMessage.getEditableText().delete(lastCompletionCursor,lastCompletionCursor + lastCompletionLength);
+			lastCompletionLength = 0;
+		}
+		return true;
+	}
+
+	@Override
+	public void onActivityResult(int requestCode, int resultCode,
+	                                final Intent data) {
+		if (resultCode == Activity.RESULT_OK) {
+			if (requestCode == ConversationActivity.REQUEST_DECRYPT_PGP) {
+				activity.getSelectedConversation().getAccount().getPgpDecryptionService().onKeychainUnlocked();
+				keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
+				updatePgpMessages();
+			} else if (requestCode == ConversationActivity.REQUEST_TRUST_KEYS_TEXT) {
+				final String body = mEditMessage.getText().toString();
+				Message message = new Message(conversation, body, conversation.getNextEncryption());
+				sendAxolotlMessage(message);
+			} else if (requestCode == ConversationActivity.REQUEST_TRUST_KEYS_MENU) {
+				int choice = data.getIntExtra("choice", ConversationActivity.ATTACHMENT_CHOICE_INVALID);
+				activity.selectPresenceToAttachFile(choice, conversation.getNextEncryption());
+			}
+		} else {
+			if (requestCode == ConversationActivity.REQUEST_DECRYPT_PGP) {
+				keychainUnlock = KEYCHAIN_UNLOCK_NOT_REQUIRED;
+				updatePgpMessages();
+			}
+		}
 	}
 
 }

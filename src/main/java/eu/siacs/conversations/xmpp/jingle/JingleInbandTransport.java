@@ -1,14 +1,14 @@
 package eu.siacs.conversations.xmpp.jingle;
 
+import android.util.Base64;
+import android.util.Log;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
-
-import android.util.Base64;
-import android.util.Log;
 
 import eu.siacs.conversations.Config;
 import eu.siacs.conversations.entities.Account;
@@ -25,7 +25,6 @@ public class JingleInbandTransport extends JingleTransport {
 	private Account account;
 	private Jid counterpart;
 	private int blockSize;
-	private int bufferSize;
 	private int seq = 0;
 	private String sessionId;
 
@@ -58,7 +57,6 @@ public class JingleInbandTransport extends JingleTransport {
 		this.account = connection.getAccount();
 		this.counterpart = connection.getCounterPart();
 		this.blockSize = blocksize;
-		this.bufferSize = blocksize / 4;
 		this.sessionId = sid;
 	}
 
@@ -76,7 +74,7 @@ public class JingleInbandTransport extends JingleTransport {
 					@Override
 					public void onIqPacketReceived(Account account,
 							IqPacket packet) {
-						if (packet.getType() == IqPacket.TYPE.ERROR) {
+						if (packet.getType() != IqPacket.TYPE.RESULT) {
 							callback.failed();
 						} else {
 							callback.established();
@@ -95,7 +93,7 @@ public class JingleInbandTransport extends JingleTransport {
 			digest.reset();
 			file.getParentFile().mkdirs();
 			file.createNewFile();
-			this.fileOutputStream = file.createOutputStream();
+			this.fileOutputStream = connection.getFileOutputStream();
 			if (this.fileOutputStream == null) {
 				Log.d(Config.LOGTAG,account.getJid().toBareJid()+": could not create output stream");
 				callback.onFileTransferAborted();
@@ -114,15 +112,11 @@ public class JingleInbandTransport extends JingleTransport {
 		this.onFileTransmissionStatusChanged = callback;
 		this.file = file;
 		try {
-			if (this.file.getKey() != null) {
-				this.remainingSize = (this.file.getSize() / 16 + 1) * 16;
-			} else {
-				this.remainingSize = this.file.getSize();
-			}
+			this.remainingSize = this.file.getExpectedSize();
 			this.fileSize = this.remainingSize;
 			this.digest = MessageDigest.getInstance("SHA-1");
 			this.digest.reset();
-			fileInputStream = this.file.createInputStream();
+			fileInputStream = connection.getFileInputStream();
 			if (fileInputStream == null) {
 				Log.d(Config.LOGTAG,account.getJid().toBareJid()+": could no create input stream");
 				callback.onFileTransferAborted();
@@ -157,7 +151,7 @@ public class JingleInbandTransport extends JingleTransport {
 	}
 
 	private void sendNextBlock() {
-		byte[] buffer = new byte[this.bufferSize];
+		byte[] buffer = new byte[this.blockSize];
 		try {
 			int count = fileInputStream.read(buffer);
 			if (count == -1) {
@@ -182,6 +176,7 @@ public class JingleInbandTransport extends JingleTransport {
 			data.setAttribute("sid", this.sessionId);
 			data.setContent(base64);
 			this.account.getXmppConnection().sendIqPacket(iq, this.onAckReceived);
+			this.account.getXmppConnection().r(); //don't fill up stanza queue too much
 			this.seq++;
 			if (this.remainingSize > 0) {
 				connection.updateProgress((int) ((((double) (this.fileSize - this.remainingSize)) / this.fileSize) * 100));

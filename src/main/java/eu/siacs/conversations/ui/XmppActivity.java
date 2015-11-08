@@ -43,8 +43,11 @@ import android.util.Log;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.google.zxing.BarcodeFormat;
@@ -65,6 +68,7 @@ import java.util.concurrent.RejectedExecutionException;
 
 import eu.siacs.conversations.Config;
 import eu.siacs.conversations.R;
+import eu.siacs.conversations.crypto.axolotl.XmppAxolotlSession;
 import eu.siacs.conversations.entities.Account;
 import eu.siacs.conversations.entities.Contact;
 import eu.siacs.conversations.entities.Conversation;
@@ -74,7 +78,10 @@ import eu.siacs.conversations.entities.Presences;
 import eu.siacs.conversations.services.AvatarService;
 import eu.siacs.conversations.services.XmppConnectionService;
 import eu.siacs.conversations.services.XmppConnectionService.XmppConnectionBinder;
+import eu.siacs.conversations.ui.widget.Switch;
+import eu.siacs.conversations.utils.CryptoHelper;
 import eu.siacs.conversations.utils.ExceptionHelper;
+import eu.siacs.conversations.xmpp.OnKeyStatusUpdated;
 import eu.siacs.conversations.xmpp.OnUpdateBlocklist;
 import eu.siacs.conversations.xmpp.jid.InvalidJidException;
 import eu.siacs.conversations.xmpp.jid.Jid;
@@ -90,6 +97,7 @@ public abstract class XmppActivity extends Activity {
 
 	protected int mPrimaryTextColor;
 	protected int mSecondaryTextColor;
+	protected int mTertiaryTextColor;
 	protected int mPrimaryBackgroundColor;
 	protected int mSecondaryBackgroundColor;
 	protected int mColorRed;
@@ -116,7 +124,7 @@ public abstract class XmppActivity extends Activity {
 	protected ConferenceInvite mPendingConferenceInvite = null;
 
 
-	protected void refreshUi() {
+	protected final void refreshUi() {
 		final long diff = SystemClock.elapsedRealtime() - mLastUiRefresh;
 		if (diff > Config.REFRESH_UI_INTERVAL) {
 			mRefreshUiHandler.removeCallbacks(mRefreshUiRunnable);
@@ -128,9 +136,7 @@ public abstract class XmppActivity extends Activity {
 		}
 	}
 
-	protected void refreshUiReal() {
-
-	}
+	abstract protected void refreshUiReal();
 
 	protected interface OnValueEdited {
 		public void onValueEdited(String value);
@@ -275,6 +281,9 @@ public abstract class XmppActivity extends Activity {
 		if (this instanceof XmppConnectionService.OnAccountUpdate) {
 			this.xmppConnectionService.setOnAccountListChangedListener((XmppConnectionService.OnAccountUpdate) this);
 		}
+		if (this instanceof XmppConnectionService.OnCaptchaRequested) {
+			this.xmppConnectionService.setOnCaptchaRequestedListener((XmppConnectionService.OnCaptchaRequested) this);
+		}
 		if (this instanceof XmppConnectionService.OnRosterUpdate) {
 			this.xmppConnectionService.setOnRosterUpdateListener((XmppConnectionService.OnRosterUpdate) this);
 		}
@@ -283,6 +292,12 @@ public abstract class XmppActivity extends Activity {
 		}
 		if (this instanceof OnUpdateBlocklist) {
 			this.xmppConnectionService.setOnUpdateBlocklistListener((OnUpdateBlocklist) this);
+		}
+		if (this instanceof XmppConnectionService.OnShowErrorToast) {
+			this.xmppConnectionService.setOnShowErrorToastListener((XmppConnectionService.OnShowErrorToast) this);
+		}
+		if (this instanceof OnKeyStatusUpdated) {
+			this.xmppConnectionService.setOnKeyStatusUpdatedListener((OnKeyStatusUpdated) this);
 		}
 	}
 
@@ -293,6 +308,9 @@ public abstract class XmppActivity extends Activity {
 		if (this instanceof XmppConnectionService.OnAccountUpdate) {
 			this.xmppConnectionService.removeOnAccountListChangedListener();
 		}
+		if (this instanceof XmppConnectionService.OnCaptchaRequested) {
+			this.xmppConnectionService.removeOnCaptchaRequestedListener();
+		}
 		if (this instanceof XmppConnectionService.OnRosterUpdate) {
 			this.xmppConnectionService.removeOnRosterUpdateListener();
 		}
@@ -301,6 +319,12 @@ public abstract class XmppActivity extends Activity {
 		}
 		if (this instanceof OnUpdateBlocklist) {
 			this.xmppConnectionService.removeOnUpdateBlocklistListener();
+		}
+		if (this instanceof XmppConnectionService.OnShowErrorToast) {
+			this.xmppConnectionService.removeOnShowErrorToastListener();
+		}
+		if (this instanceof OnKeyStatusUpdated) {
+			this.xmppConnectionService.removeOnNewKeysAvailableListener();
 		}
 	}
 
@@ -328,14 +352,15 @@ public abstract class XmppActivity extends Activity {
 		super.onCreate(savedInstanceState);
 		metrics = getResources().getDisplayMetrics();
 		ExceptionHelper.init(getApplicationContext());
-		mPrimaryTextColor = getResources().getColor(R.color.primarytext);
-		mSecondaryTextColor = getResources().getColor(R.color.secondarytext);
-		mColorRed = getResources().getColor(R.color.red);
-		mColorOrange = getResources().getColor(R.color.orange);
-		mColorGreen = getResources().getColor(R.color.green);
+		mPrimaryTextColor = getResources().getColor(R.color.black87);
+		mSecondaryTextColor = getResources().getColor(R.color.black54);
+		mTertiaryTextColor = getResources().getColor(R.color.black12);
+		mColorRed = getResources().getColor(R.color.red800);
+		mColorOrange = getResources().getColor(R.color.orange500);
+		mColorGreen = getResources().getColor(R.color.green500);
 		mPrimaryColor = getResources().getColor(R.color.primary);
-		mPrimaryBackgroundColor = getResources().getColor(R.color.primarybackground);
-		mSecondaryBackgroundColor = getResources().getColor(R.color.secondarybackground);
+		mPrimaryBackgroundColor = getResources().getColor(R.color.grey50);
+		mSecondaryBackgroundColor = getResources().getColor(R.color.grey200);
 		this.mTheme = findTheme();
 		setTheme(this.mTheme);
 		this.mUsingEnterKey = usingEnterKey();
@@ -365,14 +390,18 @@ public abstract class XmppActivity extends Activity {
 
 	public void switchToConversation(Conversation conversation, String text,
 			boolean newTask) {
-		switchToConversation(conversation,text,null,newTask);
+		switchToConversation(conversation,text,null,false,newTask);
 	}
 
 	public void highlightInMuc(Conversation conversation, String nick) {
-		switchToConversation(conversation, null, nick, false);
+		switchToConversation(conversation, null, nick, false, false);
 	}
 
-	private void switchToConversation(Conversation conversation, String text, String nick, boolean newTask) {
+	public void privateMsgInMuc(Conversation conversation, String nick) {
+		switchToConversation(conversation, null, nick, true, false);
+	}
+
+	private void switchToConversation(Conversation conversation, String text, String nick, boolean pm, boolean newTask) {
 		Intent viewConversationIntent = new Intent(this,
 				ConversationActivity.class);
 		viewConversationIntent.setAction(Intent.ACTION_VIEW);
@@ -383,6 +412,7 @@ public abstract class XmppActivity extends Activity {
 		}
 		if (nick != null) {
 			viewConversationIntent.putExtra(ConversationActivity.NICK, nick);
+			viewConversationIntent.putExtra(ConversationActivity.PRIVATE_MESSAGE,pm);
 		}
 		viewConversationIntent.setType(ConversationActivity.VIEW_CONVERSATION);
 		if (newTask) {
@@ -398,16 +428,26 @@ public abstract class XmppActivity extends Activity {
 	}
 
 	public void switchToContactDetails(Contact contact) {
+		switchToContactDetails(contact, null);
+	}
+
+	public void switchToContactDetails(Contact contact, String messageFingerprint) {
 		Intent intent = new Intent(this, ContactDetailsActivity.class);
 		intent.setAction(ContactDetailsActivity.ACTION_VIEW_CONTACT);
 		intent.putExtra("account", contact.getAccount().getJid().toBareJid().toString());
 		intent.putExtra("contact", contact.getJid().toString());
+		intent.putExtra("fingerprint", messageFingerprint);
 		startActivity(intent);
 	}
 
 	public void switchToAccount(Account account) {
+		switchToAccount(account, false);
+	}
+
+	public void switchToAccount(Account account, boolean init) {
 		Intent intent = new Intent(this, EditAccountActivity.class);
 		intent.putExtra("jid", account.getJid().toBareJid().toString());
+		intent.putExtra("init", init);
 		startActivity(intent);
 	}
 
@@ -447,14 +487,11 @@ public abstract class XmppActivity extends Activity {
 
 					@Override
 					public void success(Account account) {
-						xmppConnectionService.databaseBackend
-								.updateAccount(account);
+						xmppConnectionService.databaseBackend.updateAccount(account);
 						xmppConnectionService.sendPresence(account);
 						if (conversation != null) {
-							conversation
-									.setNextEncryption(Message.ENCRYPTION_PGP);
-							xmppConnectionService.databaseBackend
-									.updateConversation(conversation);
+							conversation.setNextEncryption(Message.ENCRYPTION_PGP);
+							xmppConnectionService.databaseBackend.updateConversation(conversation);
 						}
 					}
 
@@ -594,6 +631,131 @@ public abstract class XmppActivity extends Activity {
 		builder.create().show();
 	}
 
+	protected boolean addFingerprintRow(LinearLayout keys, final Account account, final String fingerprint, boolean highlight) {
+		final XmppAxolotlSession.Trust trust = account.getAxolotlService()
+				.getFingerprintTrust(fingerprint);
+		if (trust == null) {
+			return false;
+		}
+		return addFingerprintRowWithListeners(keys, account, fingerprint, highlight, trust, true,
+				new CompoundButton.OnCheckedChangeListener() {
+					@Override
+					public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+						account.getAxolotlService().setFingerprintTrust(fingerprint,
+								(isChecked) ? XmppAxolotlSession.Trust.TRUSTED :
+										XmppAxolotlSession.Trust.UNTRUSTED);
+					}
+				},
+				new View.OnClickListener() {
+					@Override
+					public void onClick(View v) {
+						account.getAxolotlService().setFingerprintTrust(fingerprint,
+								XmppAxolotlSession.Trust.UNTRUSTED);
+						v.setEnabled(true);
+					}
+				}
+
+		);
+	}
+
+	protected boolean addFingerprintRowWithListeners(LinearLayout keys, final Account account,
+	                                                 final String fingerprint,
+	                                                 boolean highlight,
+	                                                 XmppAxolotlSession.Trust trust,
+	                                                 boolean showTag,
+	                                                 CompoundButton.OnCheckedChangeListener
+			                                                 onCheckedChangeListener,
+	                                                 View.OnClickListener onClickListener) {
+		if (trust == XmppAxolotlSession.Trust.COMPROMISED) {
+			return false;
+		}
+		View view = getLayoutInflater().inflate(R.layout.contact_key, keys, false);
+		TextView key = (TextView) view.findViewById(R.id.key);
+		TextView keyType = (TextView) view.findViewById(R.id.key_type);
+		Switch trustToggle = (Switch) view.findViewById(R.id.tgl_trust);
+		trustToggle.setVisibility(View.VISIBLE);
+		trustToggle.setOnCheckedChangeListener(onCheckedChangeListener);
+		trustToggle.setOnClickListener(onClickListener);
+		view.setOnLongClickListener(new View.OnLongClickListener() {
+			@Override
+			public boolean onLongClick(View v) {
+				showPurgeKeyDialog(account, fingerprint);
+				return true;
+			}
+		});
+		boolean x509 = trust == XmppAxolotlSession.Trust.TRUSTED_X509 || trust == XmppAxolotlSession.Trust.INACTIVE_TRUSTED_X509;
+		switch (trust) {
+			case UNTRUSTED:
+			case TRUSTED:
+			case TRUSTED_X509:
+				trustToggle.setChecked(trust.trusted(), false);
+				trustToggle.setEnabled(trust != XmppAxolotlSession.Trust.TRUSTED_X509);
+				if (trust == XmppAxolotlSession.Trust.TRUSTED_X509) {
+					trustToggle.setOnClickListener(null);
+				}
+				key.setTextColor(getPrimaryTextColor());
+				keyType.setTextColor(getSecondaryTextColor());
+				break;
+			case UNDECIDED:
+				trustToggle.setChecked(false, false);
+				trustToggle.setEnabled(false);
+				key.setTextColor(getPrimaryTextColor());
+				keyType.setTextColor(getSecondaryTextColor());
+				break;
+			case INACTIVE_UNTRUSTED:
+			case INACTIVE_UNDECIDED:
+				trustToggle.setOnClickListener(null);
+				trustToggle.setChecked(false, false);
+				trustToggle.setEnabled(false);
+				key.setTextColor(getTertiaryTextColor());
+				keyType.setTextColor(getTertiaryTextColor());
+				break;
+			case INACTIVE_TRUSTED:
+			case INACTIVE_TRUSTED_X509:
+				trustToggle.setOnClickListener(null);
+				trustToggle.setChecked(true, false);
+				trustToggle.setEnabled(false);
+				key.setTextColor(getTertiaryTextColor());
+				keyType.setTextColor(getTertiaryTextColor());
+				break;
+		}
+
+		if (showTag) {
+			keyType.setText(getString(x509 ? R.string.omemo_fingerprint_x509 : R.string.omemo_fingerprint));
+		} else {
+			keyType.setVisibility(View.GONE);
+		}
+		if (highlight) {
+			keyType.setTextColor(getResources().getColor(R.color.accent));
+			keyType.setText(getString(x509 ? R.string.omemo_fingerprint_x509_selected_message : R.string.omemo_fingerprint_selected_message));
+		} else {
+			keyType.setText(getString(x509 ? R.string.omemo_fingerprint_x509 : R.string.omemo_fingerprint));
+		}
+
+		key.setText(CryptoHelper.prettifyFingerprint(fingerprint));
+		keys.addView(view);
+		return true;
+	}
+
+	public void showPurgeKeyDialog(final Account account, final String fingerprint) {
+		Builder builder = new Builder(this);
+		builder.setTitle(getString(R.string.purge_key));
+		builder.setIconAttribute(android.R.attr.alertDialogIcon);
+		builder.setMessage(getString(R.string.purge_key_desc_part1)
+				+ "\n\n" + CryptoHelper.prettifyFingerprint(fingerprint)
+				+ "\n\n" + getString(R.string.purge_key_desc_part2));
+		builder.setNegativeButton(getString(R.string.cancel), null);
+		builder.setPositiveButton(getString(R.string.accept),
+				new DialogInterface.OnClickListener() {
+					@Override
+					public void onClick(DialogInterface dialog, int which) {
+						account.getAxolotlService().purgeKey(fingerprint);
+						refreshUi();
+					}
+				});
+		builder.create().show();
+	}
+
 	public void selectPresence(final Conversation conversation,
 			final OnPresenceSelected listener) {
 		final Contact contact = conversation.getContact();
@@ -713,6 +875,10 @@ public abstract class XmppActivity extends Activity {
 		}
 	};
 
+	public int getTertiaryTextColor() {
+		return this.mTertiaryTextColor;
+	}
+
 	public int getSecondaryTextColor() {
 		return this.mSecondaryTextColor;
 	}
@@ -723,10 +889,6 @@ public abstract class XmppActivity extends Activity {
 
 	public int getWarningTextColor() {
 		return this.mColorRed;
-	}
-
-	public int getPrimaryColor() {
-		return this.mPrimaryColor;
 	}
 
 	public int getOnlineColor() {

@@ -74,13 +74,10 @@
   <string name="clear_conversation_history">清除会话记录</string>
   <string name="clear_histor_msg">删除该会话中所有信息？\n\n<b>注:</b> 该操作不会影响其他设备或服务器保存的信息。</string>
   <string name="delete_messages">删除消息</string>
-  <string name="also_end_conversation">之后结束该会话</string>
   <string name="choose_presence">添加在线用户至联系人</string>
-  <string name="send_plain_text_message">发送纯文本信息</string>
   <string name="send_otr_message">发送 OTR 加密信息</string>
   <string name="send_pgp_message">发送 OpenPGP 加密信息</string>
   <string name="your_nick_has_been_changed">昵称修改成功</string>
-  <string name="download_image">下载图片</string>
   <string name="send_unencrypted">不加密发送</string>
   <string name="decryption_failed">解密失败，可能是私钥不正确。</string>
   <string name="openkeychain_required">OpenKeychain</string>
@@ -106,8 +103,6 @@
   <string name="pref_vibrate_summary">收到新消息时震动</string>
   <string name="pref_sound">声音</string>
   <string name="pref_sound_summary">收到新消息时的铃声</string>
-  <string name="pref_conference_notifications">讨论组通知</string>
-  <string name="pref_conference_notifications_summary">当有新的消息时总是通知而不是亮屏时才通知</string>
   <string name="pref_notification_grace_period">通知限期</string>
   <string name="pref_notification_grace_period_summary">接收副本短时间内关闭通知</string>
   <string name="pref_advanced_options">高级选项</string>
@@ -150,7 +145,6 @@
   <string name="account_status_regis_not_sup">服务器不支持注册</string>
   <string name="account_status_security_error">安全错误</string>
   <string name="account_status_incompatible_server">服务器不兼容</string>
-  <string name="encryption_choice_none">纯文本内容</string>
   <string name="encryption_choice_otr">OTR</string>
   <string name="encryption_choice_pgp">OpenPGP</string>
   <string name="mgmt_account_edit">编辑账号</string>
@@ -187,7 +181,6 @@
   <string name="server_info_blocking">XEP-0191: 屏蔽指令</string>
   <string name="server_info_roster_version">XEP-0237: 花名册版本</string>
   <string name="server_info_stream_management">XEP-0198: 流管理</string>
-  <string name="server_info_pep">XEP-0163: PEP (头像)</string>
   <string name="server_info_available">有效</string>
   <string name="server_info_unavailable">无效</string>
   <string name="missing_public_keys">缺少公钥通知</string>
@@ -289,15 +282,11 @@
   <string name="conference_members_only">此讨论组只允许成员加入</string>
   <string name="conference_kicked">你被从此讨论组踢出</string>
   <string name="using_account">用账户  %s</string>
-  <string name="checking_image">正在 HTTP 托管中检查图片</string>
-  <string name="image_file_deleted">此图片已经被删除</string>
   <string name="not_connected_try_again">你没有连接。请稍后重试</string>
-  <string name="check_image_filesize">检查图片文件尺寸</string>
   <string name="message_options">消息选项</string>
   <string name="copy_text">拷贝文本</string>
   <string name="copy_original_url">拷贝原始URL</string>
   <string name="send_again">再次发送</string>
-  <string name="image_url">图片 URL</string>
   <string name="message_text">消息文本</string>
   <string name="url_copied_to_clipboard">已经拷贝 URL 到剪贴板</string>
   <string name="message_copied_to_clipboard">消息已经拷贝到剪贴板</string>
@@ -389,7 +378,6 @@
   <string name="public_conference">公开访问的讨论组</string>
   <string name="private_conference">私密，只有成员可以加入的讨论组</string>
   <string name="conference_options">讨论组选项</string>
-  <string name="members_only">私密(只对成员开放)</string>
   <string name="non_anonymous">非匿名</string>
   <string name="modified_conference_options">讨论组选项已修改！</string>
   <string name="could_not_modify_conference_options">不能修改讨论组选项</string>
@@ -429,7 +417,6 @@
   <string name="received_location">位置已收到</string>
   <string name="title_undo_swipe_out_conversation">Conversation 已关闭</string>
   <string name="title_undo_swipe_out_muc">离开讨论组</string>
-  <string name="pref_certificate_options">证书选项</string>
   <string name="pref_dont_trust_system_cas_title">不相信系统 CA</string>
   <string name="pref_dont_trust_system_cas_summary">所有证书必须人工通过</string>
   <string name="pref_remove_trusted_certificates_title">移除证书</string>

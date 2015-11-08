@@ -1,34 +1,44 @@
 package eu.siacs.conversations.ui;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import eu.siacs.conversations.R;
-import eu.siacs.conversations.entities.Account;
-import eu.siacs.conversations.services.XmppConnectionService.OnAccountUpdate;
-import eu.siacs.conversations.ui.adapter.AccountAdapter;
+import android.app.ActionBar;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.DialogInterface.OnClickListener;
 import android.content.Intent;
 import android.os.Bundle;
+import android.security.KeyChain;
+import android.security.KeyChainAliasCallback;
 import android.view.ContextMenu;
+import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.ContextMenu.ContextMenuInfo;
 import android.widget.AdapterView;
 import android.widget.AdapterView.AdapterContextMenuInfo;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ListView;
+import android.widget.Toast;
 
-public class ManageAccountActivity extends XmppActivity implements OnAccountUpdate {
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import eu.siacs.conversations.Config;
+import eu.siacs.conversations.R;
+import eu.siacs.conversations.entities.Account;
+import eu.siacs.conversations.services.XmppConnectionService;
+import eu.siacs.conversations.services.XmppConnectionService.OnAccountUpdate;
+import eu.siacs.conversations.ui.adapter.AccountAdapter;
+
+public class ManageAccountActivity extends XmppActivity implements OnAccountUpdate, KeyChainAliasCallback, XmppConnectionService.OnAccountCreated {
 
 	protected Account selectedAccount = null;
 
 	protected final List<Account> accountList = new ArrayList<>();
 	protected ListView accountListView;
 	protected AccountAdapter mAccountAdapter;
+	protected AtomicBoolean mInvokedAddAccount = new AtomicBoolean(false);
 
 	@Override
 	public void onAccountUpdate() {
@@ -40,6 +50,11 @@ public class ManageAccountActivity extends XmppActivity implements OnAccountUpda
 		synchronized (this.accountList) {
 			accountList.clear();
 			accountList.addAll(xmppConnectionService.getAccounts());
+		}
+		ActionBar actionBar = getActionBar();
+		if (actionBar != null) {
+			actionBar.setHomeButtonEnabled(this.accountList.size() > 0);
+			actionBar.setDisplayHomeAsUpEnabled(this.accountList.size() > 0);
 		}
 		invalidateOptionsMenu();
 		mAccountAdapter.notifyDataSetChanged();
@@ -59,7 +74,7 @@ public class ManageAccountActivity extends XmppActivity implements OnAccountUpda
 
 			@Override
 			public void onItemClick(AdapterView<?> arg0, View view,
-					int position, long arg3) {
+									int position, long arg3) {
 				switchToAccount(accountList.get(position));
 			}
 		});
@@ -80,21 +95,33 @@ public class ManageAccountActivity extends XmppActivity implements OnAccountUpda
 			menu.findItem(R.id.mgmt_account_publish_avatar).setVisible(false);
 		} else {
 			menu.findItem(R.id.mgmt_account_enable).setVisible(false);
+			menu.findItem(R.id.mgmt_account_announce_pgp).setVisible(!Config.HIDE_PGP_IN_UI);
 		}
 		menu.setHeaderTitle(this.selectedAccount.getJid().toBareJid().toString());
 	}
 
 	@Override
 	void onBackendConnected() {
-		this.accountList.clear();
-		this.accountList.addAll(xmppConnectionService.getAccounts());
-		mAccountAdapter.notifyDataSetChanged();
+		refreshUiReal();
+		if (Config.X509_VERIFICATION && this.accountList.size() == 0) {
+			if (mInvokedAddAccount.compareAndSet(false,true)) {
+				addAccountFromKey();
+			}
+		}
 	}
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		getMenuInflater().inflate(R.menu.manageaccounts, menu);
 		MenuItem enableAll = menu.findItem(R.id.action_enable_all);
+		MenuItem addAccount = menu.findItem(R.id.action_add_account);
+		MenuItem addAccountWithCertificate = menu.findItem(R.id.action_add_account_with_cert);
+
+		if (Config.X509_VERIFICATION) {
+			addAccount.setVisible(false);
+			addAccountWithCertificate.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+		}
+
 		if (!accountsLeftToEnable()) {
 			enableAll.setVisible(false);
 		}
@@ -141,6 +168,9 @@ public class ManageAccountActivity extends XmppActivity implements OnAccountUpda
 			case R.id.action_enable_all:
 				enableAllAccounts();
 				break;
+			case R.id.action_add_account_with_cert:
+				addAccountFromKey();
+				break;
 			default:
 				break;
 		}
@@ -173,6 +203,14 @@ public class ManageAccountActivity extends XmppActivity implements OnAccountUpda
 			enableAccount(account);
 		} else {
 			disableAccount(account);
+		}
+	}
+
+	private void addAccountFromKey() {
+		try {
+			KeyChain.choosePrivateKeyAlias(this, this, null, null, null, -1, null);
+		} catch (ActivityNotFoundException e) {
+			Toast.makeText(this,R.string.device_does_not_support_certificates,Toast.LENGTH_LONG).show();
 		}
 	}
 
@@ -277,5 +315,27 @@ public class ManageAccountActivity extends XmppActivity implements OnAccountUpda
 				announcePgp(selectedAccount, null);
 			}
 		}
+	}
+
+	@Override
+	public void alias(String alias) {
+		if (alias != null) {
+			xmppConnectionService.createAccountFromKey(alias, this);
+		}
+	}
+
+	@Override
+	public void onAccountCreated(Account account) {
+		switchToAccount(account, true);
+	}
+
+	@Override
+	public void informUser(final int r) {
+		runOnUiThread(new Runnable() {
+			@Override
+			public void run() {
+				Toast.makeText(ManageAccountActivity.this,r,Toast.LENGTH_LONG).show();
+			}
+		});
 	}
 }

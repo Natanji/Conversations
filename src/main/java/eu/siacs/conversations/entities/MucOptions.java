@@ -1,5 +1,7 @@
 package eu.siacs.conversations.entities;
 
+import android.annotation.SuppressLint;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -14,7 +16,6 @@ import eu.siacs.conversations.xmpp.stanzas.PresencePacket;
 
 import android.annotation.SuppressLint;
 import android.text.TextUtils;
-
 import org.json.JSONArray;
 import org.json.JSONException;
 
@@ -28,7 +29,7 @@ public class MucOptions {
 		OUTCAST("outcast", 0, R.string.outcast),
 		NONE("none", 1, R.string.no_affiliation);
 
-		private Affiliation(String string, int rank, int resId) {
+		Affiliation(String string, int rank, int resId) {
 			this.string = string;
 			this.resId = resId;
 			this.rank = rank;
@@ -57,18 +58,20 @@ public class MucOptions {
 	}
 
 	public enum Role {
-		MODERATOR("moderator", R.string.moderator),
-		VISITOR("visitor", R.string.visitor),
-		PARTICIPANT("participant", R.string.participant),
-		NONE("none", R.string.no_role);
+		MODERATOR("moderator", R.string.moderator,3),
+		VISITOR("visitor", R.string.visitor,1),
+		PARTICIPANT("participant", R.string.participant,2),
+		NONE("none", R.string.no_role,0);
 
-		private Role(String string, int resId) {
+		private Role(String string, int resId, int rank) {
 			this.string = string;
 			this.resId = resId;
+			this.rank = rank;
 		}
 
 		private String string;
 		private int resId;
+		private int rank;
 
 		public int getResId() {
 			return resId;
@@ -77,6 +80,10 @@ public class MucOptions {
 		@Override
 		public String toString() {
 			return this.string;
+		}
+
+		public boolean ranks(Role role) {
+			return rank >= role.rank;
 		}
 	}
 
@@ -329,8 +336,17 @@ public class MucOptions {
 		 return !membersOnly() || self.getAffiliation().ranks(Affiliation.ADMIN);
 	}
 
+	public boolean participating() {
+		return !online() || self.getRole().ranks(Role.PARTICIPANT);
+	}
+
 	public boolean membersOnly() {
 		return hasFeature("muc_membersonly");
+	}
+
+	public boolean mamSupport() {
+		// Update with "urn:xmpp:mam:1" once we support it
+		return hasFeature("urn:xmpp:mam:0");
 	}
 
 	public boolean nonanonymous() {
@@ -339,6 +355,10 @@ public class MucOptions {
 
 	public boolean persistent() {
 		return hasFeature("muc_persistent");
+	}
+
+	public boolean moderated() {
+		return hasFeature("muc_moderated");
 	}
 
 	public void deleteUser(String name) {
@@ -358,6 +378,15 @@ public class MucOptions {
 			}
 		}
 		users.add(user);
+	}
+
+	public boolean isUserInRoom(String name) {
+		for (int i = 0; i < users.size(); ++i) {
+			if (users.get(i).getName().equals(name)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public void processPacket(PresencePacket packet, PgpEngine pgp) {
@@ -381,7 +410,9 @@ public class MucOptions {
 							this.error = ERROR_NO_ERROR;
 							self = user;
 							if (mNickChangingInProgress) {
-								onRenameListener.onSuccess();
+								if (onRenameListener != null) {
+									onRenameListener.onSuccess();
+								}
 								mNickChangingInProgress = false;
 							} else if (this.onJoinListener != null) {
 								this.onJoinListener.onSuccess();

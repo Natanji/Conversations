@@ -58,13 +58,10 @@
   <string name="clear_conversation_history">清除對話記錄</string>
   <string name="clear_histor_msg">你確定要刪除該對話中所有訊息嗎？\n\n<b>警告:</b> 這將不會影響其他設備或伺服器儲存的訊息。</string>
   <string name="delete_messages">刪除訊息</string>
-  <string name="also_end_conversation">之後結束這對話</string>
   <string name="choose_presence">選擇狀態訊息</string>
-  <string name="send_plain_text_message">發送純文字訊息</string>
   <string name="send_otr_message">發送 OTR 加密訊息</string>
   <string name="send_pgp_message">發送 OpenPGP 加密訊息</string>
   <string name="your_nick_has_been_changed">用戶名稱修改成功</string>
-  <string name="download_image">下載圖片</string>
   <string name="send_unencrypted">不加密發送</string>
   <string name="decryption_failed">解密失敗，可能是私鑰不正確。</string>
   <string name="openkeychain_required">OpenKeychain</string>
@@ -90,8 +87,6 @@
   <string name="pref_vibrate_summary">收到新訊息時震動</string>
   <string name="pref_sound">聲音</string>
   <string name="pref_sound_summary">收到新訊息時播放鈴聲</string>
-  <string name="pref_conference_notifications">群組通知</string>
-  <string name="pref_conference_notifications_summary">當有新訊息時總是通知，而不是被標記時才通知</string>
   <string name="pref_notification_grace_period">通知限期</string>
   <string name="pref_notification_grace_period_summary">收到副本後，關閉通知一小段時間</string>
   <string name="pref_advanced_options">進階選項</string>
@@ -132,7 +127,6 @@
   <string name="account_status_regis_conflict">該用戶名稱已被使用</string>
   <string name="account_status_regis_success">註冊完成</string>
   <string name="account_status_regis_not_sup">伺服器不支持註冊</string>
-  <string name="encryption_choice_none">純文字內容</string>
   <string name="encryption_choice_otr">OTR</string>
   <string name="encryption_choice_pgp">OpenPGP</string>
   <string name="mgmt_account_edit">編輯帳戶</string>
@@ -164,7 +158,6 @@
   <string name="muc_details_other_members">其他成員</string>
   <string name="server_info_carbon_messages">XEP-0280: Message Carbons</string>
   <string name="server_info_stream_management">XEP-0198: Stream Management</string>
-  <string name="server_info_pep">XEP-0163: PEP (Avatars)</string>
   <string name="server_info_available">支援</string>
   <string name="server_info_unavailable">不支援</string>
   <string name="missing_public_keys">沒有公佈公鑰訊息。</string>
