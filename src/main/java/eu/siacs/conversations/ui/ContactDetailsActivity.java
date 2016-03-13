@@ -7,7 +7,6 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentSender.SendIntentException;
 import android.content.SharedPreferences;
-import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
@@ -28,15 +27,18 @@ import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.QuickContactBadge;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import org.openintents.openpgp.util.OpenPgpUtils;
 
+import java.security.cert.X509Certificate;
 import java.util.List;
 
 import eu.siacs.conversations.Config;
 import eu.siacs.conversations.R;
 import eu.siacs.conversations.crypto.PgpEngine;
 import eu.siacs.conversations.crypto.axolotl.AxolotlService;
+import eu.siacs.conversations.crypto.axolotl.XmppAxolotlSession;
 import eu.siacs.conversations.entities.Account;
 import eu.siacs.conversations.entities.Contact;
 import eu.siacs.conversations.entities.ListItem;
@@ -100,7 +102,6 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 			}
 		}
 	};
-	private LinearLayout mainLayout;
 	private Jid accountJid;
 	private Jid contactJid;
 	private TextView contactJidTv;
@@ -138,7 +139,7 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 						ContactDetailsActivity.this);
 				builder.setTitle(getString(R.string.action_add_phone_book));
 				builder.setMessage(getString(R.string.add_phone_book_text,
-						contact.getJid()));
+						contact.getDisplayJid()));
 				builder.setNegativeButton(getString(R.string.cancel), null);
 				builder.setPositiveButton(getString(R.string.add), addToPhonebook);
 				builder.create().show();
@@ -188,7 +189,7 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 		super.onCreate(savedInstanceState);
 		if (getIntent().getAction().equals(ACTION_VIEW_CONTACT)) {
 			try {
-				this.accountJid = Jid.fromString(getIntent().getExtras().getString("account"));
+				this.accountJid = Jid.fromString(getIntent().getExtras().getString(EXTRA_ACCOUNT));
 			} catch (final InvalidJidException ignored) {
 			}
 			try {
@@ -199,7 +200,6 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 		this.messageFingerprint = getIntent().getStringExtra("fingerprint");
 		setContentView(R.layout.activity_contact_details);
 
-		mainLayout = (LinearLayout) findViewById(R.id.details_main_layout);
 		contactJidTv = (TextView) findViewById(R.id.details_contactjid);
 		accountJidTv = (TextView) findViewById(R.id.details_account);
 		lastseen = (TextView) findViewById(R.id.details_lastseen);
@@ -236,7 +236,7 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 				builder.setTitle(getString(R.string.action_delete_contact))
 					.setMessage(
 							getString(R.string.remove_contact_text,
-								contact.getJid()))
+								contact.getDisplayJid()))
 					.setPositiveButton(getString(R.string.delete),
 							removeFromRoster).create().show();
 				break;
@@ -297,13 +297,7 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 			edit.setVisible(false);
 			delete.setVisible(false);
 		}
-		return true;
-	}
-
-	@Override
-	public void onConfigurationChanged (Configuration newConfig) {
-		super.onConfigurationChanged(newConfig);
-		UIHelper.resetChildMargins(mainLayout);
+		return super.onCreateOptionsMenu(menu);
 	}
 
 	private void populateView() {
@@ -364,10 +358,10 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 		}
 
 		if (contact.getPresences().size() > 1) {
-			contactJidTv.setText(contact.getJid() + " ("
+			contactJidTv.setText(contact.getDisplayJid() + " ("
 					+ contact.getPresences().size() + ")");
 		} else {
-			contactJidTv.setText(contact.getJid().toString());
+			contactJidTv.setText(contact.getDisplayJid());
 		}
 		String account;
 		if (Config.DOMAIN_LOCK != null) {
@@ -403,7 +397,12 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 		}
 		for (final String fingerprint : contact.getAccount().getAxolotlService().getFingerprintsForContact(contact)) {
 			boolean highlight = fingerprint.equals(messageFingerprint);
-			hasKeys |= addFingerprintRow(keys, contact.getAccount(), fingerprint, highlight);
+			hasKeys |= addFingerprintRow(keys, contact.getAccount(), fingerprint, highlight, new OnClickListener() {
+				@Override
+				public void onClick(View v) {
+					onOmemoKeyClicked(contact.getAccount(), fingerprint);
+				}
+			});
 		}
 		if (contact.getPgpKeyId() != 0) {
 			hasKeys = true;
@@ -453,6 +452,40 @@ public class ContactDetailsActivity extends XmppActivity implements OnAccountUpd
 				tags.addView(tv);
 			}
 		}
+	}
+
+	private void onOmemoKeyClicked(Account account, String fingerprint) {
+		final XmppAxolotlSession.Trust trust = account.getAxolotlService().getFingerprintTrust(fingerprint);
+		if (trust != null && trust == XmppAxolotlSession.Trust.TRUSTED_X509) {
+			X509Certificate x509Certificate = account.getAxolotlService().getFingerprintCertificate(fingerprint);
+			if (x509Certificate != null) {
+				showCertificateInformationDialog(CryptoHelper.extractCertificateInformation(x509Certificate));
+			} else {
+				Toast.makeText(this,R.string.certificate_not_found, Toast.LENGTH_SHORT).show();
+			}
+		}
+	}
+
+	private void showCertificateInformationDialog(Bundle bundle) {
+		View view = getLayoutInflater().inflate(R.layout.certificate_information, null);
+		final String not_available = getString(R.string.certicate_info_not_available);
+		TextView subject_cn = (TextView) view.findViewById(R.id.subject_cn);
+		TextView subject_o = (TextView) view.findViewById(R.id.subject_o);
+		TextView issuer_cn = (TextView) view.findViewById(R.id.issuer_cn);
+		TextView issuer_o = (TextView) view.findViewById(R.id.issuer_o);
+		TextView sha1 = (TextView) view.findViewById(R.id.sha1);
+
+		subject_cn.setText(bundle.getString("subject_cn", not_available));
+		subject_o.setText(bundle.getString("subject_o", not_available));
+		issuer_cn.setText(bundle.getString("issuer_cn", not_available));
+		issuer_o.setText(bundle.getString("issuer_o", not_available));
+		sha1.setText(bundle.getString("sha1", not_available));
+
+		AlertDialog.Builder builder = new AlertDialog.Builder(this);
+		builder.setTitle(R.string.certificate_information);
+		builder.setView(view);
+		builder.setPositiveButton(R.string.ok, null);
+		builder.create().show();
 	}
 
 	protected void confirmToDeleteFingerprint(final String fingerprint) {

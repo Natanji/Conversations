@@ -9,17 +9,20 @@ import net.java.otr4j.session.SessionID;
 import net.java.otr4j.session.SessionImpl;
 import net.java.otr4j.session.SessionStatus;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.security.interfaces.DSAPublicKey;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 
 import eu.siacs.conversations.Config;
+import eu.siacs.conversations.crypto.axolotl.AxolotlService;
 import eu.siacs.conversations.xmpp.chatstate.ChatState;
 import eu.siacs.conversations.xmpp.jid.InvalidJidException;
 import eu.siacs.conversations.xmpp.jid.Jid;
@@ -46,7 +49,8 @@ public class Conversation extends AbstractEntity implements Blockable {
 	public static final String ATTRIBUTE_NEXT_ENCRYPTION = "next_encryption";
 	public static final String ATTRIBUTE_MUC_PASSWORD = "muc_password";
 	public static final String ATTRIBUTE_MUTED_TILL = "muted_till";
-	public static final String ATTRIBUTE_LAST_MESSAGE_TRANSMITTED = "last_message_transmitted";
+	public static final String ATTRIBUTE_ALWAYS_NOTIFY = "always_notify";
+	public static final String ATTRIBUTE_CRYPTO_TARGETS = "crypto_targets";
     public static final String ATTRIBUTE_MUC_NOTIFICATION_MODE = "muc_notification_mode";
     public static final String ATTRIBUTE_MUC_NOTIFICATION_KEYWORDS = "muc_notification_keywords";
 
@@ -82,6 +86,8 @@ public class Conversation extends AbstractEntity implements Blockable {
 	private ChatState mOutgoingChatState = Config.DEFAULT_CHATSTATE;
 	private ChatState mIncomingChatState = Config.DEFAULT_CHATSTATE;
 	private String mLastReceivedOtrMessageId = null;
+	private String mFirstMamReference = null;
+	private Message correctingMessage;
 
 	public boolean hasMessagesLeftOnServer() {
 		return messagesLeftOnServer;
@@ -226,6 +232,24 @@ public class Conversation extends AbstractEntity implements Blockable {
 		return null;
 	}
 
+	public Message findMessageWithRemoteIdAndCounterpart(String id, Jid counterpart, boolean received, boolean carbon) {
+		synchronized (this.messages) {
+			for(int i = this.messages.size() - 1; i >= 0; --i) {
+				Message message = messages.get(i);
+				if (counterpart.equals(message.getCounterpart())
+						&& ((message.getStatus() == Message.STATUS_RECEIVED) == received)
+						&& (carbon == message.isCarbon() || received) ) {
+					if (id.equals(message.getRemoteMsgId())) {
+						return message;
+					} else {
+						return null;
+					}
+				}
+			}
+		}
+		return null;
+	}
+
 	public Message findSentMessageWithUuid(String id) {
 		synchronized (this.messages) {
 			for (Message message : this.messages) {
@@ -276,6 +300,42 @@ public class Conversation extends AbstractEntity implements Blockable {
 		synchronized (this.messages) {
 			return this.messages.size();
 		}
+	}
+
+	public void setFirstMamReference(String reference) {
+		this.mFirstMamReference = reference;
+	}
+
+	public String getFirstMamReference() {
+		return this.mFirstMamReference;
+	}
+
+	public void setLastClearHistory(long time) {
+		setAttribute("last_clear_history",String.valueOf(time));
+	}
+
+	public long getLastClearHistory() {
+		return getLongAttribute("last_clear_history", 0);
+	}
+
+	public List<Jid> getAcceptedCryptoTargets() {
+		if (mode == MODE_SINGLE) {
+			return Arrays.asList(getJid().toBareJid());
+		} else {
+			return getJidListAttribute(ATTRIBUTE_CRYPTO_TARGETS);
+		}
+	}
+
+	public void setAcceptedCryptoTargets(List<Jid> acceptedTargets) {
+		setAttribute(ATTRIBUTE_CRYPTO_TARGETS, acceptedTargets);
+	}
+
+	public void setCorrectingMessage(Message correctingMessage) {
+		this.correctingMessage = correctingMessage;
+	}
+
+	public Message getCorrectingMessage() {
+		return this.correctingMessage;
 	}
 
 	public interface OnMessageFound {
@@ -481,15 +541,18 @@ public class Conversation extends AbstractEntity implements Blockable {
 		return mSmp;
 	}
 
-	public void startOtrIfNeeded() {
-		if (this.otrSession != null
-				&& this.otrSession.getSessionStatus() != SessionStatus.ENCRYPTED) {
+	public boolean startOtrIfNeeded() {
+		if (this.otrSession != null && this.otrSession.getSessionStatus() != SessionStatus.ENCRYPTED) {
 			try {
 				this.otrSession.startSession();
+				return true;
 			} catch (OtrException e) {
 				this.resetOtrSession();
+				return false;
 			}
-				}
+		} else {
+			return true;
+		}
 	}
 
 	public boolean endOtrIfNeeded() {
@@ -548,7 +611,7 @@ public class Conversation extends AbstractEntity implements Blockable {
 	/**
 	 * short for is Private and Non-anonymous
 	 */
-	public boolean isPnNA() {
+	private boolean isPnNA() {
 		return mode == MODE_SINGLE || (getMucOptions().membersOnly() && getMucOptions().nonanonymous());
 	}
 
@@ -610,14 +673,37 @@ public class Conversation extends AbstractEntity implements Blockable {
 	}
 
 	public int getNextEncryption() {
+		final AxolotlService axolotlService = getAccount().getAxolotlService();
 		int next = this.getIntAttribute(ATTRIBUTE_NEXT_ENCRYPTION, -1);
 		if (next == -1) {
+			if (Config.X509_VERIFICATION) {
+				if (axolotlService != null && axolotlService.isConversationAxolotlCapable(this)) {
+					return Message.ENCRYPTION_AXOLOTL;
+				} else {
+					return Message.ENCRYPTION_NONE;
+				}
+			}
 			int outgoing = this.getMostRecentlyUsedOutgoingEncryption();
 			if (outgoing == Message.ENCRYPTION_NONE) {
-				return this.getMostRecentlyUsedIncomingEncryption();
+				next = this.getMostRecentlyUsedIncomingEncryption();
 			} else {
-				return outgoing;
+				next = outgoing;
 			}
+		}
+
+		if (!Config.supportUnencrypted() && next <= 0) {
+			if (Config.supportOmemo()
+					&& (axolotlService != null && axolotlService.isConversationAxolotlCapable(this) || !Config.multipleEncryptionChoices())) {
+				return Message.ENCRYPTION_AXOLOTL;
+			} else if (Config.supportOtr() && mode == MODE_SINGLE) {
+				return Message.ENCRYPTION_OTR;
+			} else if (Config.supportOpenPgp()
+					&& (mode == MODE_SINGLE) || !Config.multipleEncryptionChoices()) {
+				return Message.ENCRYPTION_PGP;
+			}
+		} else if (next == Message.ENCRYPTION_AXOLOTL
+				&& (!Config.supportOmemo() || axolotlService == null || !axolotlService.isConversationAxolotlCapable(this))) {
+			next = Message.ENCRYPTION_NONE;
 		}
 		return next;
 	}
@@ -680,41 +766,36 @@ public class Conversation extends AbstractEntity implements Blockable {
 		synchronized (this.messages) {
 			for (int i = this.messages.size() - 1; i >= 0; --i) {
 				Message message = this.messages.get(i);
-				if ((message.getStatus() == Message.STATUS_UNSEND || message.getStatus() == Message.STATUS_SEND) && message.getBody() != null && message.getBody().equals(body)) {
-					return message;
+				if (message.getStatus() == Message.STATUS_UNSEND || message.getStatus() == Message.STATUS_SEND) {
+					String otherBody;
+					if (message.hasFileOnRemoteHost()) {
+						otherBody = message.getFileParams().url.toString();
+					} else {
+						otherBody = message.body;
+					}
+					if (otherBody != null && otherBody.equals(body)) {
+						return message;
+					}
 				}
 			}
 			return null;
 		}
 	}
 
-	public void resetLastMessageTransmitted() {
-		this.setAttribute(ATTRIBUTE_LAST_MESSAGE_TRANSMITTED,String.valueOf(-1));
-	}
-
-	public boolean setLastMessageTransmitted(long value) {
-		long before = getLastMessageTransmitted();
-		if (value - before > 1000) {
-			this.setAttribute(ATTRIBUTE_LAST_MESSAGE_TRANSMITTED, String.valueOf(value));
-			return true;
-		} else {
-			return false;
-		}
-	}
-
 	public long getLastMessageTransmitted() {
-		long timestamp = getLongAttribute(ATTRIBUTE_LAST_MESSAGE_TRANSMITTED,0);
-		if (timestamp == 0) {
-			synchronized (this.messages) {
-				for(int i = this.messages.size() - 1; i >= 0; --i) {
-					Message message = this.messages.get(i);
-					if (message.getStatus() == Message.STATUS_RECEIVED) {
-						return message.getTimeSent();
-					}
+		long last_clear = getLastClearHistory();
+		if (last_clear != 0) {
+			return last_clear;
+		}
+		synchronized (this.messages) {
+			for(int i = this.messages.size() - 1; i >= 0; --i) {
+				Message message = this.messages.get(i);
+				if (message.getStatus() == Message.STATUS_RECEIVED || message.isCarbon()) {
+					return message.getTimeSent();
 				}
 			}
 		}
-		return timestamp;
+		return 0;
 	}
 
 	public void setMutedTill(long value) {
@@ -725,21 +806,64 @@ public class Conversation extends AbstractEntity implements Blockable {
 		return System.currentTimeMillis() < this.getLongAttribute(ATTRIBUTE_MUTED_TILL, 0);
 	}
 
+	public boolean alwaysNotify() {
+		return isPnNA() || getBooleanAttribute(ATTRIBUTE_ALWAYS_NOTIFY, Config.ALWAYS_NOTIFY_BY_DEFAULT);
+	}
+
 	public boolean setAttribute(String key, String value) {
-		try {
-			this.attributes.put(key, value);
-			return true;
-		} catch (JSONException e) {
-			return false;
+		synchronized (this.attributes) {
+			try {
+				this.attributes.put(key, value);
+				return true;
+			} catch (JSONException e) {
+				return false;
+			}
+		}
+	}
+
+	public boolean setAttribute(String key, List<Jid> jids) {
+		JSONArray array = new JSONArray();
+		for(Jid jid : jids) {
+			array.put(jid.toBareJid().toString());
+		}
+		synchronized (this.attributes) {
+			try {
+				this.attributes.put(key, array);
+				return true;
+			} catch (JSONException e) {
+				e.printStackTrace();
+				return false;
+			}
 		}
 	}
 
 	public String getAttribute(String key) {
-		try {
-			return this.attributes.getString(key);
-		} catch (JSONException e) {
-			return null;
+		synchronized (this.attributes) {
+			try {
+				return this.attributes.getString(key);
+			} catch (JSONException e) {
+				return null;
+			}
 		}
+	}
+
+	public List<Jid> getJidListAttribute(String key) {
+		ArrayList<Jid> list = new ArrayList<>();
+		synchronized (this.attributes) {
+			try {
+				JSONArray array = this.attributes.getJSONArray(key);
+				for (int i = 0; i < array.length(); ++i) {
+					try {
+						list.add(Jid.fromString(array.getString(i)));
+					} catch (InvalidJidException e) {
+						//ignored
+					}
+				}
+			} catch (JSONException e) {
+				//ignored
+			}
+		}
+		return list;
 	}
 
 	public int getIntAttribute(String key, int defaultValue) {
@@ -768,10 +892,26 @@ public class Conversation extends AbstractEntity implements Blockable {
 		}
 	}
 
+	public boolean getBooleanAttribute(String key, boolean defaultValue) {
+		String value = this.getAttribute(key);
+		if (value == null) {
+			return defaultValue;
+		} else {
+			return Boolean.parseBoolean(value);
+		}
+	}
+
 	public void add(Message message) {
 		message.setConversation(this);
 		synchronized (this.messages) {
 			this.messages.add(message);
+		}
+	}
+
+	public void prepend(Message message) {
+		message.setConversation(this);
+		synchronized (this.messages) {
+			this.messages.add(0,message);
 		}
 	}
 

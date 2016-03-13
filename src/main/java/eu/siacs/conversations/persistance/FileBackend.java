@@ -42,9 +42,6 @@ import eu.siacs.conversations.utils.FileUtils;
 import eu.siacs.conversations.xmpp.pep.Avatar;
 
 public class FileBackend {
-
-	private static int IMAGE_SIZE = 1920;
-
 	private final SimpleDateFormat imageDateFormat = new SimpleDateFormat("yyyyMMdd_HHmmssSSS", Locale.US);
 
 	private XmppConnectionService mXmppConnectionService;
@@ -61,21 +58,25 @@ public class FileBackend {
 		final boolean encrypted = !decrypted
 				&& (message.getEncryption() == Message.ENCRYPTION_PGP
 				|| message.getEncryption() == Message.ENCRYPTION_DECRYPTED);
-		if (encrypted) {
-			return new DownloadableFile(getConversationsFileDirectory()+message.getUuid()+".pgp");
+		final DownloadableFile file;
+		String path = message.getRelativeFilePath();
+		if (path == null) {
+			path = message.getUuid();
+		}
+		if (path.startsWith("/")) {
+			file = new DownloadableFile(path);
 		} else {
-			String path = message.getRelativeFilePath();
-			if (path == null) {
-				path = message.getUuid();
-			} else if (path.startsWith("/")) {
-				return new DownloadableFile(path);
-			}
 			String mime = message.getMimeType();
 			if (mime != null && mime.startsWith("image")) {
-				return new DownloadableFile(getConversationsImageDirectory() + path);
+				file = new DownloadableFile(getConversationsImageDirectory() + path);
 			} else {
-				return new DownloadableFile(getConversationsFileDirectory() + path);
+				file = new DownloadableFile(getConversationsFileDirectory() + path);
 			}
+		}
+		if (encrypted) {
+			return new DownloadableFile(getConversationsFileDirectory() + file.getName() + ".pgp");
+		} else {
+			return file;
 		}
 	}
 
@@ -85,7 +86,7 @@ public class FileBackend {
 
 	public static String getConversationsImageDirectory() {
 		return Environment.getExternalStoragePublicDirectory(
-			Environment.DIRECTORY_PICTURES).getAbsolutePath()
+				Environment.DIRECTORY_PICTURES).getAbsolutePath()
 			+ "/Conversations/";
 	}
 
@@ -112,7 +113,10 @@ public class FileBackend {
 		}
 	}
 
-	public Bitmap rotate(Bitmap bitmap, int degree) {
+	public static Bitmap rotate(Bitmap bitmap, int degree) {
+		if (degree == 0) {
+			return bitmap;
+		}
 		int w = bitmap.getWidth();
 		int h = bitmap.getHeight();
 		Matrix mtx = new Matrix();
@@ -131,7 +135,7 @@ public class FileBackend {
 		}
 		File file = new File(path);
 		long size = file.length();
-		if (size == 0 || size >= 524288 ) {
+		if (size == 0 || size >= Config.IMAGE_MAX_SIZE ) {
 			return false;
 		}
 		BitmapFactory.Options options = new BitmapFactory.Options();
@@ -148,16 +152,10 @@ public class FileBackend {
 	}
 
 	public String getOriginalPath(Uri uri) {
-		Log.d(Config.LOGTAG,"get original path for uri: "+uri.toString());
 		return FileUtils.getPath(mXmppConnectionService,uri);
 	}
 
-	public DownloadableFile copyFileToPrivateStorage(Message message, Uri uri) throws FileCopyException {
-		Log.d(Config.LOGTAG, "copy " + uri.toString() + " to private storage");
-		String mime = mXmppConnectionService.getContentResolver().getType(uri);
-		String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
-		message.setRelativeFilePath(message.getUuid() + "." + extension);
-		DownloadableFile file = mXmppConnectionService.getFileBackend().getFile(message);
+	public void copyFileToPrivateStorage(File file, Uri uri) throws FileCopyException {
 		file.getParentFile().mkdirs();
 		OutputStream os = null;
 		InputStream is = null;
@@ -180,36 +178,24 @@ public class FileBackend {
 			close(os);
 			close(is);
 		}
-		Log.d(Config.LOGTAG, "output file name " + mXmppConnectionService.getFileBackend().getFile(message));
-		return file;
+		Log.d(Config.LOGTAG, "output file name " + file.getAbsolutePath());
 	}
 
-	public DownloadableFile copyImageToPrivateStorage(Message message, Uri image)
-			throws FileCopyException {
-		return this.copyImageToPrivateStorage(message, image, 0);
+	public void copyFileToPrivateStorage(Message message, Uri uri) throws FileCopyException {
+		Log.d(Config.LOGTAG, "copy " + uri.toString() + " to private storage");
+		String mime = mXmppConnectionService.getContentResolver().getType(uri);
+		String extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
+		message.setRelativeFilePath(message.getUuid() + "." + extension);
+		copyFileToPrivateStorage(mXmppConnectionService.getFileBackend().getFile(message), uri);
 	}
 
-	private DownloadableFile copyImageToPrivateStorage(Message message,Uri image, int sampleSize) throws FileCopyException {
-		switch(Config.IMAGE_FORMAT) {
-			case JPEG:
-				message.setRelativeFilePath(message.getUuid()+".jpg");
-				break;
-			case PNG:
-				message.setRelativeFilePath(message.getUuid()+".png");
-				break;
-			case WEBP:
-				message.setRelativeFilePath(message.getUuid()+".webp");
-				break;
-		}
-		DownloadableFile file = getFile(message);
+	private void copyImageToPrivateStorage(File file, Uri image, int sampleSize) throws FileCopyException {
 		file.getParentFile().mkdirs();
 		InputStream is = null;
 		OutputStream os = null;
 		try {
 			file.createNewFile();
 			is = mXmppConnectionService.getContentResolver().openInputStream(image);
-			os = new FileOutputStream(file);
-
 			Bitmap originalBitmap;
 			BitmapFactory.Options options = new BitmapFactory.Options();
 			int inSampleSize = (int) Math.pow(2, sampleSize);
@@ -222,19 +208,21 @@ public class FileBackend {
 			}
 			Bitmap scaledBitmap = resize(originalBitmap, Config.IMAGE_SIZE);
 			int rotation = getRotation(image);
-			if (rotation > 0) {
-				scaledBitmap = rotate(scaledBitmap, rotation);
+			scaledBitmap = rotate(scaledBitmap, rotation);
+			boolean targetSizeReached = false;
+			int quality = Config.IMAGE_QUALITY;
+			while(!targetSizeReached) {
+				os = new FileOutputStream(file);
+				boolean success = scaledBitmap.compress(Config.IMAGE_FORMAT, quality, os);
+				if (!success) {
+					throw new FileCopyException(R.string.error_compressing_image);
+				}
+				os.flush();
+				targetSizeReached = file.length() <= Config.IMAGE_MAX_SIZE || quality <= 50;
+				quality -= 5;
 			}
-			boolean success = scaledBitmap.compress(Config.IMAGE_FORMAT, Config.IMAGE_QUALITY, os);
-			if (!success) {
-				throw new FileCopyException(R.string.error_compressing_image);
-			}
-			os.flush();
-			long size = file.getSize();
-			int width = scaledBitmap.getWidth();
-			int height = scaledBitmap.getHeight();
-			message.setBody(Long.toString(size) + '|' + width + '|' + height);
-			return file;
+			scaledBitmap.recycle();
+			return;
 		} catch (FileNotFoundException e) {
 			throw new FileCopyException(R.string.error_file_not_found);
 		} catch (IOException e) {
@@ -245,7 +233,7 @@ public class FileBackend {
 		} catch (OutOfMemoryError e) {
 			++sampleSize;
 			if (sampleSize <= 3) {
-				return copyImageToPrivateStorage(message, image, sampleSize);
+				copyImageToPrivateStorage(file, image, sampleSize);
 			} else {
 				throw new FileCopyException(R.string.error_out_of_memory);
 			}
@@ -255,6 +243,26 @@ public class FileBackend {
 			close(os);
 			close(is);
 		}
+	}
+
+	public void copyImageToPrivateStorage(File file, Uri image) throws FileCopyException {
+		copyImageToPrivateStorage(file, image, 0);
+	}
+
+	public void copyImageToPrivateStorage(Message message, Uri image) throws FileCopyException {
+		switch(Config.IMAGE_FORMAT) {
+			case JPEG:
+				message.setRelativeFilePath(message.getUuid()+".jpg");
+				break;
+			case PNG:
+				message.setRelativeFilePath(message.getUuid()+".png");
+				break;
+			case WEBP:
+				message.setRelativeFilePath(message.getUuid()+".webp");
+				break;
+		}
+		copyImageToPrivateStorage(getFile(message), image);
+		updateFileParams(message);
 	}
 
 	private int getRotation(File file) {
@@ -285,10 +293,7 @@ public class FileBackend {
 				throw new FileNotFoundException();
 			}
 			thumbnail = resize(fullsize, size);
-			int rotation = getRotation(file);
-			if (rotation > 0) {
-				thumbnail = rotate(thumbnail, rotation);
-			}
+			thumbnail = rotate(thumbnail, getRotation(file));
 			this.mXmppConnectionService.getBitmapCache().put(message.getUuid(),thumbnail);
 		}
 		return thumbnail;
@@ -400,12 +405,11 @@ public class FileBackend {
 			if (input == null) {
 				return null;
 			} else {
-				int rotation = getRotation(image);
-				if (rotation > 0) {
-					input = rotate(input, rotation);
-				}
+				input = rotate(input, getRotation(image));
 				return cropCenterSquare(input, size);
 			}
+		} catch (SecurityException e) {
+			return null; // happens for example on Android 6.0 if contacts permissions get revoked
 		} catch (FileNotFoundException e) {
 			return null;
 		} finally {
@@ -420,7 +424,7 @@ public class FileBackend {
 		InputStream is = null;
 		try {
 			BitmapFactory.Options options = new BitmapFactory.Options();
-			options.inSampleSize = calcSampleSize(image,Math.max(newHeight, newWidth));
+			options.inSampleSize = calcSampleSize(image, Math.max(newHeight, newWidth));
 			is = mXmppConnectionService.getContentResolver().openInputStream(image);
 			if (is == null) {
 				return null;
@@ -447,6 +451,8 @@ public class FileBackend {
 				source.recycle();
 			}
 			return dest;
+		} catch (SecurityException e) {
+			return null; //android 6.0 with revoked permissions for example
 		} catch (FileNotFoundException e) {
 			return null;
 		} finally {
@@ -475,21 +481,21 @@ public class FileBackend {
 		return output;
 	}
 
-	private int calcSampleSize(Uri image, int size) throws FileNotFoundException {
+	private int calcSampleSize(Uri image, int size) throws FileNotFoundException, SecurityException {
 		BitmapFactory.Options options = new BitmapFactory.Options();
 		options.inJustDecodeBounds = true;
 		BitmapFactory.decodeStream(mXmppConnectionService.getContentResolver().openInputStream(image), null, options);
 		return calcSampleSize(options, size);
 	}
 
-	private int calcSampleSize(File image, int size) {
+	private static int calcSampleSize(File image, int size) {
 		BitmapFactory.Options options = new BitmapFactory.Options();
 		options.inJustDecodeBounds = true;
 		BitmapFactory.decodeFile(image.getAbsolutePath(), options);
 		return calcSampleSize(options, size);
 	}
 
-	private int calcSampleSize(BitmapFactory.Options options, int size) {
+	public static int calcSampleSize(BitmapFactory.Options options, int size) {
 		int height = options.outHeight;
 		int width = options.outWidth;
 		int inSampleSize = 1;

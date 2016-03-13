@@ -76,11 +76,12 @@ public class ListItemAdapter extends ArrayAdapter<ListItem> {
 				tagLayout.addView(tv);
 			}
 		}
-		final Jid jid = item.getJid();
+		final String jid = item.getDisplayJid();
 		if (jid != null) {
-			tvJid.setText(jid.toString());
+			tvJid.setVisibility(View.VISIBLE);
+			tvJid.setText(jid);
 		} else {
-			tvJid.setText("");
+			tvJid.setVisibility(View.GONE);
 		}
 		tvName.setText(item.getDisplayName());
 		loadAvatar(item,picture);

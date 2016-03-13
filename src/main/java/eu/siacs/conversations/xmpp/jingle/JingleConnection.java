@@ -114,6 +114,8 @@ public class JingleConnection implements Transferable {
 				Intent intent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
 				intent.setData(Uri.fromFile(file));
 				mXmppConnectionService.sendBroadcast(intent);
+			} else {
+				account.getPgpDecryptionService().add(message);
 			}
 		}
 
@@ -216,10 +218,14 @@ public class JingleConnection implements Transferable {
 	public void init(final Message message) {
 		if (message.getEncryption() == Message.ENCRYPTION_AXOLOTL) {
 			Conversation conversation = message.getConversation();
-			conversation.getAccount().getAxolotlService().prepareKeyTransportMessage(conversation.getContact(), new OnMessageCreatedCallback() {
+			conversation.getAccount().getAxolotlService().prepareKeyTransportMessage(conversation, new OnMessageCreatedCallback() {
 				@Override
 				public void run(XmppAxolotlMessage xmppAxolotlMessage) {
-					init(message, xmppAxolotlMessage);
+					if (xmppAxolotlMessage != null) {
+						init(message, xmppAxolotlMessage);
+					} else {
+						fail();
+					}
 				}
 			});
 		} else {
@@ -316,14 +322,14 @@ public class JingleConnection implements Transferable {
 				String[] filename = fileNameElement.getContent()
 						.toLowerCase(Locale.US).toLowerCase().split("\\.");
 				String extension = filename[filename.length - 1];
-				if (Arrays.asList(VALID_IMAGE_EXTENSIONS).contains(extension)) {
+				if (VALID_IMAGE_EXTENSIONS.contains(extension)) {
 					message.setType(Message.TYPE_IMAGE);
 					message.setRelativeFilePath(message.getUuid()+"."+extension);
-				} else if (Arrays.asList(VALID_CRYPTO_EXTENSIONS).contains(
+				} else if (VALID_CRYPTO_EXTENSIONS.contains(
 						filename[filename.length - 1])) {
 					if (filename.length == 3) {
 						extension = filename[filename.length - 2];
-						if (Arrays.asList(VALID_IMAGE_EXTENSIONS).contains(extension)) {
+						if (VALID_IMAGE_EXTENSIONS.contains(extension)) {
 							message.setType(Message.TYPE_IMAGE);
 							message.setRelativeFilePath(message.getUuid()+"."+extension);
 						} else {
@@ -355,7 +361,8 @@ public class JingleConnection implements Transferable {
 				message.setBody(Long.toString(size));
 				conversation.add(message);
 				mXmppConnectionService.updateConversationUi();
-				if (size < this.mJingleConnectionManager.getAutoAcceptFileSize()) {
+				if (mJingleConnectionManager.hasStoragePermission()
+						&& size < this.mJingleConnectionManager.getAutoAcceptFileSize()) {
 					Log.d(Config.LOGTAG, "auto accepting file from "+ packet.getFrom());
 					this.acceptedAutomatically = true;
 					this.sendAccept();

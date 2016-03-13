@@ -1,5 +1,70 @@
 ###Changelog
 
+####Version 1.11.0
+* OMEMO encrypted conferences
+
+####Version 1.10.1
+* made message correction opt-in
+* various bug fixes
+
+####Version 1.10.0
+* Support for XEP-0357: Push Notifications
+* Support for XEP-0308: Last Message Correction
+* introduced build flavors to make dependence on play-services optional
+
+####Version 1.9.4
+* prevent cleared Conversations from reloading history with MAM
+* various MAM fixes
+
+####Version 1.9.3
+* expert setting that enables host and port configuration
+* expert setting opt-out of bookmark autojoin handling
+* offer to rejoin a conference after server sent unavailable
+* internal rewrites
+
+####Version 1.9.2
+* prevent startup crash on Sailfish OS
+* minor bug fixes
+
+####Version 1.9.1
+* minor bug fixes incl. a workaround for nimbuzz.com
+
+####Version 1.9.0
+* Per conference notification settings
+* Let user decide whether to compress pictures
+* Support for XEP-0368
+* Ask user to exclude Conversations from battery optimizations
+
+####Version 1.8.4
+* prompt to trust own OMEMO devices
+* fixed rotation issues in avatar publication
+* invite non-contact JIDs to conferences
+
+####Version 1.8.3
+* brought text selection back
+
+####Version 1.8.2
+* fixed stuck at 'connecting...' bug
+* make message box behave correctly with multiple links
+
+####Version 1.8.1
+* enabled direct share on Android 6.0
+* ask for permissions on Android 6.0
+* notify on MAM catchup messages
+* bug fixes
+
+####Version 1.8.0
+* TOR/ORBOT support in advanced settings
+* show vcard avatars of participants in a conference
+
+####Version 1.7.3
+* fixed PGP encrypted file transfer
+* fixed repeating messages in slack conferences
+
+####Version 1.7.2
+* decode PGP messages in background
+
+
 ####Versrion 1.7.1
 * performance improvements when opening a conversation
 

@@ -17,7 +17,9 @@ import android.text.Spanned;
 import android.text.style.ForegroundColorSpan;
 import android.text.style.RelativeSizeSpan;
 import android.text.style.StyleSpan;
+import android.text.util.Linkify;
 import android.util.DisplayMetrics;
+import android.util.Patterns;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.View.OnLongClickListener;
@@ -30,13 +32,15 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.lang.ref.WeakReference;
+import java.net.URL;
 import java.util.List;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import eu.siacs.conversations.R;
 import eu.siacs.conversations.crypto.axolotl.XmppAxolotlSession;
 import eu.siacs.conversations.entities.Account;
-import eu.siacs.conversations.entities.Contact;
 import eu.siacs.conversations.entities.Conversation;
 import eu.siacs.conversations.entities.DownloadableFile;
 import eu.siacs.conversations.entities.Message;
@@ -52,6 +56,11 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 	private static final int SENT = 0;
 	private static final int RECEIVED = 1;
 	private static final int STATUS = 2;
+	private static final Pattern XMPP_PATTERN = Pattern
+			.compile("xmpp\\:(?:(?:["
+					+ Patterns.GOOD_IRI_CHAR
+					+ "\\;\\/\\?\\@\\&\\=\\#\\~\\-\\.\\+\\!\\*\\'\\(\\)\\,\\_])"
+					+ "|(?:\\%[a-fA-F0-9]{2}))+");
 
 	private ConversationActivity activity;
 
@@ -122,6 +131,16 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 		if (viewHolder.indicatorReceived != null) {
 			viewHolder.indicatorReceived.setVisibility(View.GONE);
 		}
+
+		if (viewHolder.edit_indicator != null) {
+			if (message.edited()) {
+				viewHolder.edit_indicator.setVisibility(View.VISIBLE);
+				viewHolder.edit_indicator.setImageResource(darkBackground ? R.drawable.ic_mode_edit_white_18dp : R.drawable.ic_mode_edit_black_18dp);
+				viewHolder.edit_indicator.setAlpha(darkBackground ? 0.7f : 0.57f);
+			} else {
+				viewHolder.edit_indicator.setVisibility(View.GONE);
+			}
+		}
 		boolean multiReceived = message.getConversation().getMode() == Conversation.MODE_MULTI
 			&& message.getMergedStatus() <= Message.STATUS_RECEIVED;
 		if (message.getType() == Message.TYPE_IMAGE || message.getType() == Message.TYPE_FILE || message.getTransferable() != null) {
@@ -178,7 +197,7 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 		if (message.getEncryption() == Message.ENCRYPTION_NONE) {
 			viewHolder.indicator.setVisibility(View.GONE);
 		} else {
-			viewHolder.indicator.setImageResource(darkBackground ? R.drawable.ic_secure_indicator_white : R.drawable.ic_secure_indicator);
+			viewHolder.indicator.setImageResource(darkBackground ? R.drawable.ic_lock_white_18dp : R.drawable.ic_lock_black_18dp);
 			viewHolder.indicator.setVisibility(View.VISIBLE);
 			if (message.getEncryption() == Message.ENCRYPTION_AXOLOTL) {
 				XmppAxolotlSession.Trust trust = message.getConversation()
@@ -332,14 +351,24 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 				}
 				viewHolder.messageBody.setText(span);
 			}
+			int urlCount = 0;
+			Matcher matcher = Patterns.WEB_URL.matcher(body);
+			while (matcher.find()) {
+				urlCount++;
+			}
+			viewHolder.messageBody.setTextIsSelectable(urlCount <= 1);
+			viewHolder.messageBody.setAutoLinkMask(0);
+			Linkify.addLinks(viewHolder.messageBody, Linkify.WEB_URLS);
+			Linkify.addLinks(viewHolder.messageBody, XMPP_PATTERN, "xmpp");
 		} else {
 			viewHolder.messageBody.setText("");
+			viewHolder.messageBody.setTextIsSelectable(false);
 		}
 		viewHolder.messageBody.setTextColor(this.getMessageTextColor(darkBackground, true));
 		viewHolder.messageBody.setLinkTextColor(this.getMessageTextColor(darkBackground, true));
 		viewHolder.messageBody.setHighlightColor(activity.getResources().getColor(darkBackground ? R.color.grey800 : R.color.grey500));
 		viewHolder.messageBody.setTypeface(null, Typeface.NORMAL);
-		viewHolder.messageBody.setTextIsSelectable(true);
+		viewHolder.messageBody.setOnLongClickListener(openContextMenu);
 	}
 
 	private void displayDownloadableMessage(ViewHolder viewHolder,
@@ -352,7 +381,7 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 
 			@Override
 			public void onClick(View v) {
-				startDownloadable(message);
+				activity.startDownloadable(message);
 			}
 		});
 		viewHolder.download_button.setOnLongClickListener(openContextMenu);
@@ -420,6 +449,19 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 		viewHolder.image.setOnLongClickListener(openContextMenu);
 	}
 
+	private void loadMoreMessages(Conversation conversation) {
+		conversation.setLastClearHistory(0);
+		conversation.setHasMessagesLeftOnServer(true);
+		conversation.setFirstMamReference(null);
+		long timestamp = conversation.getLastMessageTransmitted();
+		if (timestamp == 0) {
+			timestamp = System.currentTimeMillis();
+		}
+		activity.setMessagesLoaded();
+		activity.xmppConnectionService.getMessageArchiveService().query(conversation, 0, timestamp);
+		Toast.makeText(activity, R.string.fetching_history_from_server,Toast.LENGTH_LONG).show();
+	}
+
 	@Override
 	public View getView(int position, View view, ViewGroup parent) {
 		final Message message = getItem(position);
@@ -442,6 +484,7 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 						.findViewById(R.id.download_button);
 					viewHolder.indicator = (ImageView) view
 						.findViewById(R.id.security_indicator);
+					viewHolder.edit_indicator = (ImageView) view.findViewById(R.id.edit_indicator);
 					viewHolder.image = (ImageView) view
 						.findViewById(R.id.message_image);
 					viewHolder.messageBody = (TextView) view
@@ -462,6 +505,7 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 						.findViewById(R.id.download_button);
 					viewHolder.indicator = (ImageView) view
 						.findViewById(R.id.security_indicator);
+					viewHolder.edit_indicator = (ImageView) view.findViewById(R.id.edit_indicator);
 					viewHolder.image = (ImageView) view
 						.findViewById(R.id.message_image);
 					viewHolder.messageBody = (TextView) view
@@ -476,6 +520,7 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 					view = activity.getLayoutInflater().inflate(R.layout.message_status, parent, false);
 					viewHolder.contact_picture = (ImageView) view.findViewById(R.id.message_photo);
 					viewHolder.status_message = (TextView) view.findViewById(R.id.status_message);
+					viewHolder.load_more_messages = (Button) view.findViewById(R.id.load_more_messages);
 					break;
 				default:
 					viewHolder = null;
@@ -492,16 +537,31 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 		boolean darkBackground = (type == RECEIVED && (!isInValidSession || !mUseWhiteBackground));
 
 		if (type == STATUS) {
-			if (conversation.getMode() == Conversation.MODE_SINGLE) {
-				viewHolder.contact_picture.setImageBitmap(activity
-						.avatarService().get(conversation.getContact(),
-							activity.getPixel(32)));
-				viewHolder.contact_picture.setAlpha(0.5f);
+			if ("LOAD_MORE".equals(message.getBody())) {
+				viewHolder.status_message.setVisibility(View.GONE);
+				viewHolder.contact_picture.setVisibility(View.GONE);
+				viewHolder.load_more_messages.setVisibility(View.VISIBLE);
+				viewHolder.load_more_messages.setOnClickListener(new OnClickListener() {
+					@Override
+					public void onClick(View v) {
+						loadMoreMessages(message.getConversation());
+					}
+				});
+			} else {
+				viewHolder.status_message.setVisibility(View.VISIBLE);
+				viewHolder.contact_picture.setVisibility(View.VISIBLE);
+				viewHolder.load_more_messages.setVisibility(View.GONE);
+				if (conversation.getMode() == Conversation.MODE_SINGLE) {
+					viewHolder.contact_picture.setImageBitmap(activity
+							.avatarService().get(conversation.getContact(),
+									activity.getPixel(32)));
+					viewHolder.contact_picture.setAlpha(0.5f);
+				}
 				viewHolder.status_message.setText(message.getBody());
 			}
 			return view;
 		} else {
-			loadAvatar(message,viewHolder.contact_picture);
+			loadAvatar(message, viewHolder.contact_picture);
 		}
 
 		viewHolder.contact_picture
@@ -576,7 +636,19 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 			} else if (message.bodyIsHeart()) {
 				displayHeartMessage(viewHolder, message.getBody().trim());
 			} else if (message.treatAsDownloadable() == Message.Decision.MUST) {
-				displayDownloadableMessage(viewHolder, message, activity.getString(R.string.check_x_filesize, UIHelper.getFileDescriptionString(activity, message)));
+				try {
+					URL url = new URL(message.getBody());
+					displayDownloadableMessage(viewHolder,
+							message,
+							activity.getString(R.string.check_x_filesize_on_host,
+									UIHelper.getFileDescriptionString(activity, message),
+									url.getHost()));
+				} catch (Exception e) {
+					displayDownloadableMessage(viewHolder,
+							message,
+							activity.getString(R.string.check_x_filesize,
+									UIHelper.getFileDescriptionString(activity, message)));
+				}
 			} else {
 				displayTextMessage(viewHolder, message, darkBackground);
 			}
@@ -600,18 +672,6 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 		displayStatus(viewHolder, message, type, darkBackground);
 
 		return view;
-	}
-
-	public void startDownloadable(Message message) {
-		Transferable transferable = message.getTransferable();
-		if (transferable != null) {
-			if (!transferable.start()) {
-				Toast.makeText(activity, R.string.not_connected_try_again,
-						Toast.LENGTH_SHORT).show();
-			}
-		} else if (message.treatAsDownloadable() != Message.Decision.NEVER) {
-			activity.xmppConnectionService.getHttpConnectionManager().createNewDownloadConnection(message, true);
-		}
 	}
 
 	public void openDownloadable(Message message) {
@@ -675,6 +735,8 @@ public class MessageAdapter extends ArrayAdapter<Message> {
 		protected ImageView contact_picture;
 		protected TextView status_message;
 		protected TextView encryption;
+		public Button load_more_messages;
+		public ImageView edit_indicator;
 	}
 
 	class BitmapWorkerTask extends AsyncTask<Message, Void, Bitmap> {

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+import eu.siacs.conversations.Config;
 import eu.siacs.conversations.utils.UIHelper;
 import eu.siacs.conversations.xml.Element;
 import eu.siacs.conversations.xmpp.jid.Jid;
@@ -54,6 +55,18 @@ public class Bookmark extends Element implements ListItem {
 			return getBookmarkName();
 		} else {
 			return this.getJid().getLocalpart();
+		}
+	}
+
+	@Override
+	public String getDisplayJid() {
+		Jid jid = getJid();
+		if (Config.LOCK_DOMAINS_IN_CONVERSATIONS && jid != null && jid.getDomainpart().equals(Config.CONFERENCE_DOMAIN_LOCK)) {
+			return jid.getLocalpart();
+		} else if (jid != null) {
+			return jid.toString();
+		} else {
+			return null;
 		}
 	}
 
@@ -136,6 +149,16 @@ public class Bookmark extends Element implements ListItem {
 
 	public String getBookmarkName() {
 		return this.getAttribute("name");
+	}
+
+	public boolean setBookmarkName(String name) {
+		String before = getBookmarkName();
+		if (name != null && !name.equals(before)) {
+			this.setAttribute("name", name);
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	public void unregisterConversation() {

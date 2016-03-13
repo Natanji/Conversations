@@ -3,11 +3,7 @@ package eu.siacs.conversations.utils;
 import android.content.Context;
 import android.text.format.DateFormat;
 import android.text.format.DateUtils;
-import android.util.DisplayMetrics;
 import android.util.Pair;
-import android.view.View;
-import android.widget.LinearLayout;
-import android.widget.RelativeLayout;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -135,7 +131,7 @@ public class UIHelper {
 	}
 
 	public static int getColorForName(String name) {
-		if (name.isEmpty()) {
+		if (name == null || name.isEmpty()) {
 			return 0xFF202020;
 		}
 		int colors[] = {0xFFe91e63, 0xFF9c27b0, 0xFF673ab7, 0xFF3f51b5,
@@ -175,7 +171,9 @@ public class UIHelper {
 					return new Pair<>("",false);
 			}
 		} else if (message.getEncryption() == Message.ENCRYPTION_PGP) {
-			return new Pair<>(context.getString(R.string.encrypted_message_received),true);
+			return new Pair<>(context.getString(R.string.pgp_message),true);
+		} else if (message.getEncryption() == Message.ENCRYPTION_DECRYPTION_FAILED) {
+			return new Pair<>(context.getString(R.string.decryption_failed), true);
 		} else if (message.getType() == Message.TYPE_FILE || message.getType() == Message.TYPE_IMAGE) {
 			if (message.getStatus() == Message.STATUS_RECEIVED) {
 				return new Pair<>(context.getString(R.string.received_x_file,
@@ -189,10 +187,13 @@ public class UIHelper {
 						UIHelper.getMessageDisplayName(message) + " "), false);
 			} else if (GeoHelper.isGeoUri(message.getBody())) {
 				if (message.getStatus() == Message.STATUS_RECEIVED) {
-					return new Pair<>(context.getString(R.string.received_location),true);
+					return new Pair<>(context.getString(R.string.received_location), true);
 				} else {
 					return new Pair<>(context.getString(R.string.location), true);
 				}
+			} else if (message.treatAsDownloadable() == Message.Decision.MUST) {
+				return new Pair<>(context.getString(R.string.x_file_offered_for_download,
+						getFileDescriptionString(context,message)),true);
 			} else{
 				return new Pair<>(message.getBody().trim(), false);
 			}
@@ -264,22 +265,5 @@ public class UIHelper {
 		String body = message.getBody() == null ? null : message.getBody().trim().toLowerCase(Locale.getDefault());
 		body = body.replace("?","").replace("¿","");
 		return LOCATION_QUESTIONS.contains(body);
-	}
-
-	public static void resetChildMargins(LinearLayout view) {
-		int childCount = view.getChildCount();
-		for (int i = 0; i < childCount; i++) {
-			UIHelper.resetMargins(view.getChildAt(i));
-		}
-	}
-
-	private static void resetMargins(View view) {
-		LinearLayout.MarginLayoutParams marginLayoutParams = new LinearLayout.MarginLayoutParams(view.getLayoutParams());
-		marginLayoutParams.setMargins(view.getResources().getDimensionPixelSize(R.dimen.activity_horizontal_margin),
-				view.getResources().getDimensionPixelSize(R.dimen.activity_vertical_margin),
-				view.getResources().getDimensionPixelSize(R.dimen.activity_horizontal_margin),
-				view.getResources().getDimensionPixelSize(R.dimen.activity_vertical_margin));
-		LinearLayout.LayoutParams layoutParams = new LinearLayout.LayoutParams(marginLayoutParams);
-		view.setLayoutParams(layoutParams);
 	}
 }
