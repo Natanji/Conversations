@@ -20,6 +20,8 @@
         android:name="android.permission.READ_PHONE_STATE"
         tools:node="remove"/>
 
+    <uses-sdk tools:overrideLibrary="com.doodle.android.chips"/>
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
@@ -100,6 +102,10 @@
         <activity
             android:name=".ui.ConferenceDetailsActivity"
             android:label="@string/title_activity_conference_details"
+            android:windowSoftInputMode="stateHidden"/>
+        <activity
+            android:name=".ui.ConferenceKeywordActivity"
+            android:label="@string/title_activity_conference_keywords"
             android:windowSoftInputMode="stateHidden"/>
         <activity
             android:name=".ui.ContactDetailsActivity"

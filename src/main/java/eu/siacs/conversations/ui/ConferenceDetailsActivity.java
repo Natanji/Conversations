@@ -5,7 +5,9 @@ import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.IntentSender.SendIntentException;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.ContextMenu;
@@ -78,7 +80,6 @@ public class ConferenceDetailsActivity extends XmppActivity implements OnConvers
 	private ImageButton mChangeConferenceSettingsButton;
 	private ImageButton mNotifyStatusButton;
 	private Button mInviteButton;
-    private Button mInviteButton;
     private AutoCompleteTextView mKeywordTextInput;
     private ArrayAdapter<String> keyword_autocomplete;
     private ImageButton mKeywordButton;
@@ -281,23 +282,23 @@ public class ConferenceDetailsActivity extends XmppActivity implements OnConvers
         we use the following hack to achieve a simulated setThreshold(0) this:
         */
         mKeywordTextInput.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                mKeywordTextInput.showDropDown();
-                return false;
-            }
-        });
+			@Override
+			public boolean onTouch(View v, MotionEvent event) {
+				mKeywordTextInput.showDropDown();
+				return false;
+			}
+		});
         mKeywordTextInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
 
-            @Override
-            public boolean onEditorAction(TextView exampleView, int actionId, KeyEvent event) {
-                if (actionId == EditorInfo.IME_ACTION_DONE) {
-                    mKeywordButton.performClick();
-                    return true;
-                }
-                return false;
-            }
-        });
+			@Override
+			public boolean onEditorAction(TextView exampleView, int actionId, KeyEvent event) {
+				if (actionId == EditorInfo.IME_ACTION_DONE) {
+					mKeywordButton.performClick();
+					return true;
+				}
+				return false;
+			}
+		});
 		mEditNickButton.setOnClickListener(new OnClickListener() {
 
 			@Override
@@ -312,12 +313,21 @@ public class ConferenceDetailsActivity extends XmppActivity implements OnConvers
 						});
 			}
 		});
+
+		final ConferenceDetailsActivity activity = this;
 		mKeywordButton.setOnClickListener(new OnClickListener() {
 
 			@Override
 			public void onClick(View v) {
-				String value = mKeywordTextInput.getText().toString();
-				mConversation.getMucOptions().addKeyword(value);
+				/*String value = mKeywordTextInput.getText().toString();
+				mConversation.getMucOptions().addKeyword(value);*/
+
+				Intent intent = new Intent(activity,
+						ConferenceKeywordActivity.class);
+				intent.setAction(ConferenceKeywordActivity.EDIT_KEYWORDS);
+				intent.putExtra("uuid", uuid);
+				startActivity(intent);
+
 				xmppConnectionService.updateConversation(mConversation);
 				mKeywordTextInput.setText("");
 				updateView();
